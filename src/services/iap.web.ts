@@ -1,0 +1,15 @@
+export const initConnection = async () => true;
+export const endConnection = async () => true;
+export const requestPurchase = async () => undefined;
+export const getAvailablePurchases = async () => [];
+export const purchaseUpdatedListener = () => ({ remove: () => {} });
+export const purchaseErrorListener = () => ({ remove: () => {} });
+export const finishTransaction = async () => undefined;
+export const getSubscriptions = async () => [];
+export const getProducts = async () => [];
+export const flushFailedPurchasesCachedAsPendingAndroid = async () => undefined;
+export const validateReceiptIos = async () => undefined;
+export const validateReceiptAndroid = async () => undefined;
+export const clearProductsIOS = async () => undefined;
+export const clearTransactionIOS = async () => undefined;
+export default {};
