@@ -49,3 +49,4 @@ ios/
 admin/node_modules
 admin/dist
 admin/.env.local
+play-service-account.json
