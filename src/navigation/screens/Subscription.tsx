@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -35,11 +35,42 @@ export function Subscription() {
     isSubscribed,
     isLoading,
     error,
+    products,
+    productsLoading,
     purchaseSubscription,
     restorePurchases,
+    loadProducts,
     setError,
   } = useSubscriptionStore();
   const isTrialExpired = useTrialStore((s) => s.isTrialExpired);
+
+  useEffect(() => {
+    loadProducts();
+  }, [loadProducts]);
+
+  const yearlyPrice = products.yearly?.displayPrice ?? '';
+  const monthlyPrice = products.monthly?.displayPrice ?? '';
+
+  const yearlyPerMonthHint = (() => {
+    const numeric = products.yearly?.price;
+    const currency = products.yearly?.currency;
+    if (typeof numeric !== 'number' || !isFinite(numeric) || numeric <= 0) {
+      return '';
+    }
+    const perMonth = numeric / 12;
+    try {
+      if (currency) {
+        return `~${new Intl.NumberFormat(undefined, {
+          style: 'currency',
+          currency,
+          maximumFractionDigits: 2,
+        }).format(perMonth)}/month`;
+      }
+    } catch {
+      // Fall through to plain number.
+    }
+    return `~${perMonth.toFixed(2)}/month`;
+  })();
 
   const handleBack = () => {
     if (navigation.canGoBack()) {
@@ -145,11 +176,11 @@ export function Subscription() {
             </View>
 
             <View style={styles.priceContainer}>
-              <Text style={styles.price}>{price}</Text>
+              <Text style={styles.price}>{price || '—'}</Text>
               <Text style={styles.priceUnit}>{isYearly ? '/year' : '/month'}</Text>
-              {isYearly && (
-                <Text style={styles.priceHint}>~$8.25/month</Text>
-              )}
+              {isYearly && yearlyPerMonthHint ? (
+                <Text style={styles.priceHint}>{yearlyPerMonthHint}</Text>
+              ) : null}
             </View>
           </View>
         </View>
@@ -196,8 +227,8 @@ export function Subscription() {
               <>
                 {/* Subscription Plans */}
                 <View style={styles.plansContainer}>
-                  {renderPlanCard('yearly', 'YEARLY', '$99', selectedPlan === 'yearly')}
-                  {renderPlanCard('monthly', 'MONTHLY', '$13.99', selectedPlan === 'monthly')}
+                  {renderPlanCard('yearly', 'YEARLY', yearlyPrice, selectedPlan === 'yearly')}
+                  {renderPlanCard('monthly', 'MONTHLY', monthlyPrice, selectedPlan === 'monthly')}
                 </View>
 
                 {error ? (

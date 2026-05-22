@@ -1,13 +1,17 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import type { SubscriptionProducts } from '../services/iap.service';
 
 interface SubscriptionState {
   isSubscribed: boolean;
   isLoading: boolean;
   error: string | null;
+  products: SubscriptionProducts;
+  productsLoading: boolean;
   setSubscribed: (value: boolean) => void;
   checkSubscription: () => Promise<void>;
+  loadProducts: () => Promise<void>;
   purchaseSubscription: (productId: string) => Promise<boolean>;
   restorePurchases: () => Promise<boolean>;
   setLoading: (loading: boolean) => void;
@@ -20,6 +24,20 @@ export const useSubscriptionStore = create<SubscriptionState>()(
       isSubscribed: false,
       isLoading: false,
       error: null,
+      products: { monthly: null, yearly: null },
+      productsLoading: false,
+
+      loadProducts: async () => {
+        const { iapService } = await import('../services/iap.service');
+        set({ productsLoading: true });
+        try {
+          const products = await iapService.fetchSubscriptionProducts();
+          set({ products, productsLoading: false });
+        } catch (err) {
+          console.warn('loadProducts failed:', err);
+          set({ productsLoading: false });
+        }
+      },
 
       setSubscribed: (value: boolean) => {
         set({ isSubscribed: value, error: null });

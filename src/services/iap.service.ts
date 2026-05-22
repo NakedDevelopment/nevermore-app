@@ -18,11 +18,27 @@ import {
   purchaseUpdatedListener,
   purchaseErrorListener,
   finishTransaction,
+  fetchProducts,
   type Purchase,
   type PurchaseError,
+  type ProductSubscription,
 } from 'react-native-iap';
 
 import appwriteConfig from './appwrite.config';
+
+export type SubscriptionProduct = {
+  productId: string;
+  displayPrice: string;
+  price?: number;
+  currency?: string;
+  title?: string;
+  description?: string;
+};
+
+export type SubscriptionProducts = {
+  monthly: SubscriptionProduct | null;
+  yearly: SubscriptionProduct | null;
+};
 
 function getSubscriptionProductIds(): { monthly: string; yearly: string } {
   const monthly = appwriteConfig.iapProductIdMonthly?.trim() ?? '';
@@ -97,8 +113,53 @@ function handlePurchaseError(error: PurchaseError) {
   purchaseReject = null;
 }
 
+function toSubscriptionProduct(p: ProductSubscription): SubscriptionProduct {
+  const anyP = p as any;
+  const numericPrice =
+    typeof anyP.price === 'number'
+      ? anyP.price
+      : typeof anyP.priceAmount === 'number'
+        ? anyP.priceAmount
+        : undefined;
+  return {
+    productId: anyP.id ?? anyP.productId ?? '',
+    displayPrice:
+      anyP.displayPrice ?? anyP.localizedPrice ?? anyP.formattedPrice ?? '',
+    price: numericPrice,
+    currency: anyP.currency ?? anyP.priceCurrencyCode ?? undefined,
+    title: anyP.displayNameIOS ?? anyP.nameAndroid ?? anyP.title ?? undefined,
+    description: anyP.description ?? undefined,
+  };
+}
+
 export const iapService = {
   setSubscriptionUpdater,
+
+  async fetchSubscriptionProducts(): Promise<SubscriptionProducts> {
+    if (Platform.OS === 'web') {
+      return { monthly: null, yearly: null };
+    }
+    const { monthly, yearly } = getSubscriptionProductIds();
+    try {
+      const result = await fetchProducts({
+        skus: [monthly, yearly],
+        type: 'subs',
+      });
+      const list = (Array.isArray(result) ? result : []) as ProductSubscription[];
+      const findById = (id: string) =>
+        list.find((p: any) => (p?.id ?? p?.productId) === id) ?? null;
+      const m = findById(monthly);
+      const y = findById(yearly);
+      return {
+        monthly: m ? toSubscriptionProduct(m) : null,
+        yearly: y ? toSubscriptionProduct(y) : null,
+      };
+    } catch (err) {
+      console.warn('IAP fetchProducts error:', err);
+      return { monthly: null, yearly: null };
+    }
+  },
+
   async init(): Promise<void> {
     try {
       await initConnection();
