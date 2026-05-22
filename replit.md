@@ -34,6 +34,53 @@ It is web-only and is **not** bundled into the iOS/Android Expo builds.
   separately (e.g. its own Replit deployment / Vercel) with build
   `cd admin && npm install && npm run build` and publish dir `admin/dist`.
 
+## Running on a physical phone (EAS development build)
+
+This app uses native modules (`react-native-iap`, `@shopify/react-native-skia`,
+`react-native-reanimated`) so it **cannot run in stock Expo Go**. Use an EAS
+development build — a one-time custom client you install on your phone that
+includes the native modules, then JS reloads live via `npx expo start --dev-client`.
+
+`eas.json` is committed at the project root with `development`, `preview`,
+`production` profiles. Build steps run on your laptop, not in Replit, because
+EAS uploads to Apple/Google and Replit's sandbox can't sign binaries.
+
+### One-time setup (laptop)
+1. `git clone` this repo to your laptop and `npm install`
+2. `npm install -g eas-cli`
+3. `eas login` (free Expo account — https://expo.dev)
+4. `eas init` — links the local project to an Expo project ID (writes `extra.eas.projectId` into `app.json`)
+5. iOS only: have an Apple Developer Program membership ($99/yr). EAS will auto-manage certs.
+
+### Build the dev client
+- iOS device: `eas build --profile development --platform ios`
+- iOS simulator: `eas build --profile development-simulator --platform ios`
+- Android: `eas build --profile development --platform android`
+
+Each build takes ~15-25 min in Expo's cloud. You'll get a download link:
+- iOS → install via TestFlight or direct device install (ad-hoc)
+- Android → download the `.apk` and install
+
+### Daily dev loop (after the client is on your phone)
+1. Edit code in Replit (or your laptop)
+2. Start Metro: `npx expo start --dev-client --tunnel`
+   (use `--tunnel` when Metro and phone aren't on the same WiFi — required when running Metro from Replit)
+3. Open the installed dev client on your phone → scan the QR
+4. JS reloads live on save. Rebuild the client only when you add/remove native modules.
+
+### Production builds for the stores
+1. Bump `expo.version`, `expo.ios.buildNumber`, `expo.android.versionCode` in `app.json`
+2. `eas build --profile production --platform ios`
+3. `eas build --profile production --platform android`
+4. `eas submit --profile production --platform ios --latest`
+5. `eas submit --profile production --platform android --latest` (requires `play-service-account.json` from Google Play Console, gitignored)
+6. Finish review submission in App Store Connect / Play Console
+
+### `eas.json` placeholders to fill in before first `eas submit`
+- `submit.production.ios.appleId` — your Apple ID email
+- `submit.production.ios.ascAppId` — App Store Connect app ID (visible in App Store Connect URL)
+- `appleTeamId` is already set to `C5DF3CP9LJ`
+
 ## User preferences
 
 (none yet)
