@@ -39,6 +39,7 @@ import PauseIcon from '../../assets/icons/pause';
 import BackwardIcon from '../../assets/icons/backward10';
 import Forward10Icon from '../../assets/icons/forward10';
 import CheckmarkIcon from '../../assets/icons/checkmark';
+import ExternalLinkIcon from '../../assets/icons/external-link';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const CARD_WIDTH = SCREEN_WIDTH * 0.6;
@@ -405,52 +406,73 @@ export const FortyDay = () => {
               <Text style={styles.tasksTitle}>Tasks for today</Text>
               
               <View style={styles.tasksList}>
-                {currentDayData?.tasks.map((task, index) => (
-                  <Pressable
-                    key={task.id}
-                    style={styles.taskItemWrapper}
-                    onPress={() => handleTaskToggle(task.id)}
-                  >
-                    {task.completed ? (
-                      <ImageBackground
-                        source={require('../../assets/card-bg.png')}
-                        style={[styles.taskItem, styles.taskItemCompleted]}
-                        imageStyle={styles.taskItemImageStyle}
-                      >
-                        <View style={styles.taskLeft}>
-                          <View style={styles.soundWaveContainer}>
-                            <Image source={require('../../assets/task.png')} style={styles.ravenIcon} />
-                          </View>
-                          <View style={styles.taskTextContainer}>
-                            <Text style={styles.taskTitle}>{task.title}</Text>
-                          </View>
-                        </View>
+                {currentDayData?.tasks.map((task, index) => {
+                  const temptationButton = (
+                    <Pressable
+                      style={styles.temptationButton}
+                      onPress={() => {
+                        // TODO: navigate to the temptation set up in admin portal for this task
+                        console.log('Open temptation for task:', task.id);
+                      }}
+                      hitSlop={8}
+                    >
+                      <ExternalLinkIcon width={18} height={18} />
+                    </Pressable>
+                  );
 
-                        <View
-                          style={[
-                            styles.checkbox,
-                            styles.checkboxCompleted,
-                          ]}
+                  return (
+                    <Pressable
+                      key={task.id}
+                      style={styles.taskItemWrapper}
+                      onPress={() => handleTaskToggle(task.id)}
+                    >
+                      {task.completed ? (
+                        <ImageBackground
+                          source={require('../../assets/card-bg.png')}
+                          style={[styles.taskItem, styles.taskItemCompleted]}
+                          imageStyle={styles.taskItemImageStyle}
                         >
-                          <CheckmarkIcon width={20} height={20} color="#FFFFFF" />
-                        </View>
-                      </ImageBackground>
-                    ) : (
-                      <View style={styles.taskItem}>
-                        <View style={styles.taskLeft}>
-                          <View style={styles.soundWaveContainer}>
-                            <Image source={require('../../assets/task.png')} style={styles.ravenIcon} />
+                          <View style={styles.taskLeft}>
+                            <View style={styles.soundWaveContainer}>
+                              <Image source={require('../../assets/task.png')} style={styles.ravenIcon} />
+                            </View>
+                            <View style={styles.taskTextContainer}>
+                              <Text style={styles.taskTitle}>{task.title}</Text>
+                            </View>
                           </View>
-                          <View style={styles.taskTextContainer}>
-                            <Text style={styles.taskTitle}>{task.title}</Text>
-                          </View>
-                        </View>
 
-                        <View style={styles.checkbox} />
-                      </View>
-                    )}
-                  </Pressable>
-                ))}
+                          <View style={styles.taskRight}>
+                            {temptationButton}
+                            <View
+                              style={[
+                                styles.checkbox,
+                                styles.checkboxCompleted,
+                              ]}
+                            >
+                              <CheckmarkIcon width={20} height={20} color="#FFFFFF" />
+                            </View>
+                          </View>
+                        </ImageBackground>
+                      ) : (
+                        <View style={styles.taskItem}>
+                          <View style={styles.taskLeft}>
+                            <View style={styles.soundWaveContainer}>
+                              <Image source={require('../../assets/task.png')} style={styles.ravenIcon} />
+                            </View>
+                            <View style={styles.taskTextContainer}>
+                              <Text style={styles.taskTitle}>{task.title}</Text>
+                            </View>
+                          </View>
+
+                          <View style={styles.taskRight}>
+                            {temptationButton}
+                            <View style={styles.checkbox} />
+                          </View>
+                        </View>
+                      )}
+                    </Pressable>
+                  );
+                })}
               </View>
             </View>
           </>
@@ -727,6 +749,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
+  },
+  taskRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  temptationButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: 'rgba(139, 92, 246, 0.25)',
+    borderWidth: 1,
+    borderColor: 'rgba(139, 92, 246, 0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   soundWaveContainer: {
     width: 48,
