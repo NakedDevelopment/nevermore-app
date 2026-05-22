@@ -45,3 +45,7 @@ android/
 ios/
 
 .env
+# Admin app
+admin/node_modules
+admin/dist
+admin/.env.local
