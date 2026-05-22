@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, StatusBar, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, StatusBar, Dimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { Canvas, Image as SkiaImage, useImage } from '@shopify/react-native-skia';
@@ -50,7 +50,7 @@ export function TrialWelcome() {
       </Canvas>
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => {}} disabled style={styles.headerSpacer} />
+          <View style={styles.headerSpacer} />
           <Text style={styles.headerTitle}>Nevermore</Text>
           <View style={styles.headerSpacer} />
         </View>

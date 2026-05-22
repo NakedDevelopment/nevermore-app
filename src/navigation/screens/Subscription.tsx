@@ -90,25 +90,37 @@ export function Subscription() {
 
   const handleSubscribe = async () => {
     setError(null);
-    const productIds = getIAPProductIds();
-    const productId = productIds[selectedPlan];
-    const success = await purchaseSubscription(productId);
-    if (success) {
-      navigation.reset({
-        index: 0,
-        routes: [{ name: ScreenNames.HOME_TABS }],
-      });
+    try {
+      const productIds = getIAPProductIds();
+      const productId = productIds[selectedPlan];
+      if (!productId) {
+        setError('Subscription products are not configured. Please try again later.');
+        return;
+      }
+      const success = await purchaseSubscription(productId);
+      if (success) {
+        navigation.reset({
+          index: 0,
+          routes: [{ name: ScreenNames.HOME_TABS }],
+        });
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Unable to start purchase. Please try again.');
     }
   };
 
   const handleRestore = async () => {
     setError(null);
-    const success = await restorePurchases();
-    if (success) {
-      navigation.reset({
-        index: 0,
-        routes: [{ name: ScreenNames.HOME_TABS }],
-      });
+    try {
+      const success = await restorePurchases();
+      if (success) {
+        navigation.reset({
+          index: 0,
+          routes: [{ name: ScreenNames.HOME_TABS }],
+        });
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Unable to restore purchases. Please try again.');
     }
   };
 

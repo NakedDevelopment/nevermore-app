@@ -1,9 +1,20 @@
 import { ID, Models, Query } from 'react-native-appwrite';
 import { tablesDB, account } from './appwrite.config';
 import { APPWRITE_DATABASE_ID, APPWRITE_INVITATIONS_COLLECTION_ID } from '@env';
-import { getCurrentUser } from './auth.service';
+import { isUnauthorizedError } from './errorHandler';
 import { showAppwriteError } from './notifications';
 import { Platform } from 'react-native';
+
+async function getCurrentUser(): Promise<Models.User<Models.Preferences> | null> {
+  try {
+    return await account.get();
+  } catch (error) {
+    if (isUnauthorizedError(error)) {
+      return null;
+    }
+    return null;
+  }
+}
 
 export interface Invitation {
   $id?: string;

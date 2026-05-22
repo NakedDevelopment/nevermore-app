@@ -59,7 +59,15 @@ const EditableField: FC<EditableFieldProps> = ({
   );
 };
 
-type EditFieldType = 'nickname' | 'fullName' | 'email' | 'phone' | 'password' | null;
+type EditFieldType =
+  | 'nickname'
+  | 'fullName'
+  | 'email'
+  | 'phone'
+  | 'password'
+  | 'emailPassword'
+  | 'passwordCurrent'
+  | null;
 
 export const Profile: React.FC = () => {
   const navigation = useNavigation();
@@ -68,6 +76,8 @@ export const Profile: React.FC = () => {
   
   const [editingField, setEditingField] = useState<EditFieldType>(null);
   const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
+  const [pendingEmail, setPendingEmail] = useState('');
+  const [pendingNewPassword, setPendingNewPassword] = useState('');
   
   const width = Dimensions.get('window').width;
   const bg = useImage(require('../../assets/gradient.png'));
@@ -85,40 +95,22 @@ export const Profile: React.FC = () => {
   };
 
   const handleEditEmail = async (value: string): Promise<boolean> => {
+    // Stash new email and open password prompt as the second step.
+    setPendingEmail(value);
+    setEditingField('emailPassword');
+    return true;
+  };
+
+  const handleConfirmEmailWithPassword = async (password: string): Promise<boolean> => {
     try {
-      return new Promise((resolve) => {
-        Alert.prompt(
-          'Password Required',
-          'Please enter your current password to update your email',
-          [
-            {
-              text: 'Cancel',
-              style: 'cancel',
-              onPress: () => resolve(false),
-            },
-            {
-              text: 'Update',
-              onPress: async (password?: string) => {
-                try {
-                  if (!password) {
-                    Alert.alert('Error', 'Password is required');
-                    resolve(false);
-                    return;
-                  }
-                  await account.updateEmail(value, password);
-                  Alert.alert('Success', 'Email updated successfully');
-                  resolve(true);
-                } catch (error: any) {
-                  console.error('Error updating email:', error);
-                  Alert.alert('Error', error.message || 'Failed to update email');
-                  resolve(false);
-                }
-              },
-            },
-          ],
-          'secure-text'
-        );
-      });
+      if (!pendingEmail) {
+        Alert.alert('Error', 'No email change pending.');
+        return false;
+      }
+      await account.updateEmail(pendingEmail, password);
+      setPendingEmail('');
+      Alert.alert('Success', 'Email updated successfully');
+      return true;
     } catch (error: any) {
       console.error('Error updating email:', error);
       Alert.alert('Error', error.message || 'Failed to update email');
@@ -127,40 +119,22 @@ export const Profile: React.FC = () => {
   };
 
   const handleEditPassword = async (newPassword: string): Promise<boolean> => {
+    // Stash new password and open current-password prompt as the second step.
+    setPendingNewPassword(newPassword);
+    setEditingField('passwordCurrent');
+    return true;
+  };
+
+  const handleConfirmPasswordWithCurrent = async (oldPassword: string): Promise<boolean> => {
     try {
-      return new Promise((resolve) => {
-        Alert.prompt(
-          'Current Password Required',
-          'Please enter your current password',
-          [
-            {
-              text: 'Cancel',
-              style: 'cancel',
-              onPress: () => resolve(false),
-            },
-            {
-              text: 'Update',
-              onPress: async (oldPassword?: string) => {
-                try {
-                  if (!oldPassword) {
-                    Alert.alert('Error', 'Current password is required');
-                    resolve(false);
-                    return;
-                  }
-                  await account.updatePassword(newPassword, oldPassword);
-                  Alert.alert('Success', 'Password updated successfully');
-                  resolve(true);
-                } catch (error: any) {
-                  console.error('Error updating password:', error);
-                  Alert.alert('Error', error.message || 'Failed to update password');
-                  resolve(false);
-                }
-              },
-            },
-          ],
-          'secure-text'
-        );
-      });
+      if (!pendingNewPassword) {
+        Alert.alert('Error', 'No password change pending.');
+        return false;
+      }
+      await account.updatePassword(pendingNewPassword, oldPassword);
+      setPendingNewPassword('');
+      Alert.alert('Success', 'Password updated successfully');
+      return true;
     } catch (error: any) {
       console.error('Error updating password:', error);
       Alert.alert('Error', error.message || 'Failed to update password');
@@ -357,7 +331,9 @@ export const Profile: React.FC = () => {
           label="Email"
           value={user?.email || ''}
           placeholder="Enter your email"
-          onClose={() => setEditingField(null)}
+          onClose={() =>
+            setEditingField((prev) => (prev === 'email' ? null : prev))
+          }
           onSave={handleEditEmail}
           validateInput={validateEmail}
         />
@@ -371,9 +347,39 @@ export const Profile: React.FC = () => {
           value=""
           placeholder="Enter new password"
           isPassword={true}
-          onClose={() => setEditingField(null)}
+          onClose={() =>
+            setEditingField((prev) => (prev === 'password' ? null : prev))
+          }
           onSave={handleEditPassword}
           validateInput={validatePassword}
+        />
+
+        <EditFieldModal
+          visible={editingField === 'emailPassword'}
+          title="Confirm Password"
+          label="Current Password"
+          value=""
+          placeholder="Enter your current password"
+          isPassword={true}
+          onClose={() => {
+            setPendingEmail('');
+            setEditingField(null);
+          }}
+          onSave={handleConfirmEmailWithPassword}
+        />
+
+        <EditFieldModal
+          visible={editingField === 'passwordCurrent'}
+          title="Confirm Current Password"
+          label="Current Password"
+          value=""
+          placeholder="Enter your current password"
+          isPassword={true}
+          onClose={() => {
+            setPendingNewPassword('');
+            setEditingField(null);
+          }}
+          onSave={handleConfirmPasswordWithCurrent}
         />
 
         <ConfirmationModal

@@ -40,26 +40,26 @@ export type SubscriptionProducts = {
   yearly: SubscriptionProduct | null;
 };
 
+let warnedMissingProductIds = false;
+
 function getSubscriptionProductIds(): { monthly: string; yearly: string } {
   const monthly = appwriteConfig.iapProductIdMonthly?.trim() ?? '';
   const yearly = appwriteConfig.iapProductIdYearly?.trim() ?? '';
 
-  if (!monthly) {
-    const error = new Error(
-      'IAP_PRODUCT_ID_MONTHLY is not set in environment variables. Please add it to your .env file.'
+  if ((!monthly || !yearly) && !warnedMissingProductIds) {
+    warnedMissingProductIds = true;
+    console.warn(
+      '[IAP] IAP_PRODUCT_ID_MONTHLY / IAP_PRODUCT_ID_YEARLY are not set. ' +
+        'Subscriptions will be disabled until both are configured in your .env file.'
     );
-    console.error('Configuration Error:', error.message);
-    throw error;
-  }
-  if (!yearly) {
-    const error = new Error(
-      'IAP_PRODUCT_ID_YEARLY is not set in environment variables. Please add it to your .env file.'
-    );
-    console.error('Configuration Error:', error.message);
-    throw error;
   }
 
   return { monthly, yearly };
+}
+
+function hasConfiguredProductIds(): boolean {
+  const { monthly, yearly } = getSubscriptionProductIds();
+  return Boolean(monthly && yearly);
 }
 
 /** Product IDs used for subscription (monthly, yearly). Use these when starting a purchase. */
@@ -69,7 +69,7 @@ export function getIAPProductIds(): { monthly: string; yearly: string } {
 
 function getSubscriptionSkus(): string[] {
   const { monthly, yearly } = getSubscriptionProductIds();
-  return [monthly, yearly];
+  return [monthly, yearly].filter((sku): sku is string => Boolean(sku));
 }
 
 let purchaseResolve: ((value: boolean) => void) | null = null;
@@ -139,6 +139,9 @@ export const iapService = {
     if (Platform.OS === 'web') {
       return { monthly: null, yearly: null };
     }
+    if (!hasConfiguredProductIds()) {
+      return { monthly: null, yearly: null };
+    }
     const { monthly, yearly } = getSubscriptionProductIds();
     try {
       const result = await fetchProducts({
@@ -192,7 +195,23 @@ export const iapService = {
       purchaseReject = reject;
       try {
         if (Platform.OS === 'web') {
-          resolve(false);
+          purchaseReject = null;
+          purchaseResolve = null;
+          reject(
+            new Error(
+              'In-app purchases are not available in the web preview. Please use the iOS or Android app.'
+            )
+          );
+          return;
+        }
+        if (!productId || !hasConfiguredProductIds()) {
+          purchaseReject = null;
+          purchaseResolve = null;
+          reject(
+            new Error(
+              'Subscription products are not configured. Please contact support.'
+            )
+          );
           return;
         }
         await requestPurchase({

@@ -134,16 +134,26 @@ export const FortyDay = () => {
   // Prepare audio metadata when switching days so duration is available before play.
   useEffect(() => {
     const activeDay = days[activeIndex];
+    let cancelled = false;
 
     const prepareAudio = async () => {
       await audioPlayer.unloadAudio();
+      if (cancelled) return;
 
       if (activeDay?.audioUrl) {
         await audioPlayer.loadAudio(activeDay.audioUrl);
+        if (cancelled) {
+          // A newer effect has taken over; discard whatever we just loaded.
+          await audioPlayer.unloadAudio();
+        }
       }
     };
 
     prepareAudio();
+
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeIndex, days[activeIndex]?.audioUrl]);
 

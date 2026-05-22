@@ -56,8 +56,9 @@ export function VerifyEmail() {
   };
 
   const handleDidntGetEmail = () => {
-    // TODO: Implement didn't get email logic
-    console.log("Didn't get email pressed");
+    navigation.navigate(ScreenNames.HELP_SUPPORT, {
+      preSelectedReason: 'Technical Issue/Bug',
+    });
   };
 
   return (
