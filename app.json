@@ -85,6 +85,11 @@
       ],
       "expo-audio",
       "react-native-iap"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "2158a613-0b10-4a89-8601-c6ac4e2389a9"
+      }
+    }
   }
 }
