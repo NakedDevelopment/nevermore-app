@@ -25,7 +25,12 @@
       "associatedDomains": [
         "applinks:nevermoreapp.com"
       ],
-      "appleTeamId": "C5DF3CP9LJ"
+      "appleTeamId": "C5DF3CP9LJ",
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "audio"
+        ]
+      }
     },
     "android": {
       "adaptiveIcon": {

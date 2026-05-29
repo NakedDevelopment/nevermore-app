@@ -1,4 +1,4 @@
-import { useAudioPlayer as useExpoAudioPlayer, AudioPlayer, AudioSource } from 'expo-audio';
+import { useAudioPlayer as useExpoAudioPlayer, AudioPlayer, AudioSource, setAudioModeAsync } from 'expo-audio';
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { audioCacheService } from '../services/audioCache.service';
 
@@ -421,6 +421,20 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
   const mainPlayer = useExpoAudioPlayer();
   const reflectionPlayer = useExpoAudioPlayer();
   const fortydayPlayer = useExpoAudioPlayer();
+
+  // Configure the audio session once so playback continues when the app is
+  // backgrounded or the device is locked (and iOS surfaces lock-screen
+  // transport controls for the active playback session).
+  useEffect(() => {
+    setAudioModeAsync({
+      playsInSilentMode: true,
+      shouldPlayInBackground: true,
+      interruptionMode: 'doNotMix',
+      interruptionModeAndroid: 'doNotMix',
+    }).catch((error) => {
+      console.warn('Failed to configure audio mode:', error);
+    });
+  }, []);
 
   // Pause the other channels' native players so only one stream is audible
   // at a time, mirroring the in-screen behavior but enforced globally.
