@@ -1,28 +1,46 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { useAudioPlayer } from './useAudioPlayer';
+import { useAudioChannelContext, AudioChannel } from '../contexts/AudioPlayerProvider';
 
 interface UseAudioPlaylistReturn {
   selectedAudioIndex: number;
-  audioPlayer: ReturnType<typeof useAudioPlayer>;
+  audioPlayer: AudioChannel;
   handleAudioSelect: (index: number) => Promise<void>;
   loadPlaylist: (audioUrls: string[]) => void;
 }
 
 /**
- * Hook to manage audio playlist with selection and auto-play functionality
- * Extends useAudioPlayer to handle multiple audio files
+ * Hook to manage audio playlist with selection and auto-play functionality.
+ * Backed by the global `reflection` audio channel so playback persists across
+ * navigation; only the playlist selection state is local to the screen.
  */
 export function useAudioPlaylist(autoPlay: boolean = true): UseAudioPlaylistReturn {
   const [selectedAudioIndex, setSelectedAudioIndex] = useState<number>(0);
   const [audioUrls, setAudioUrls] = useState<string[]>([]);
   const [pendingAutoPlay, setPendingAutoPlay] = useState(false);
   const prevIsLoadingRef = useRef(false);
-  const audioPlayer = useAudioPlayer();
+  const audioPlayer = useAudioChannelContext('reflection');
 
   // Load audio when selectedAudioIndex changes
   useEffect(() => {
     const loadAudio = async () => {
-      if (audioUrls.length > 0 && audioUrls[selectedAudioIndex]) {
+      if (audioUrls.length === 0) {
+        return;
+      }
+
+      // If the persistent reflection player is already on one of these tracks
+      // (e.g. we navigated away and back), adopt that selection instead of
+      // forcing a reload of the first item — this preserves playback.
+      const loadedIndex = audioPlayer.currentUri
+        ? audioUrls.indexOf(audioPlayer.currentUri)
+        : -1;
+      if (loadedIndex !== -1) {
+        if (loadedIndex !== selectedAudioIndex) {
+          setSelectedAudioIndex(loadedIndex);
+        }
+        return;
+      }
+
+      if (audioUrls[selectedAudioIndex]) {
         const audioUrl = audioUrls[selectedAudioIndex];
         console.log('Loading audio from:', audioUrl);
         await audioPlayer.loadAudio(audioUrl);
@@ -30,11 +48,8 @@ export function useAudioPlaylist(autoPlay: boolean = true): UseAudioPlaylistRetu
     };
 
     loadAudio();
-
-    // Cleanup: unload audio when component unmounts
-    return () => {
-      audioPlayer.unloadAudio();
-    };
+    // No unmount teardown: the global reflection player persists across
+    // navigation so audio keeps playing when leaving the screen.
   }, [selectedAudioIndex, audioUrls]);
 
   // Auto-play when loading completes (transitions from loading to not loading)

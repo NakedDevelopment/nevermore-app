@@ -40,9 +40,8 @@ export default function Transcript() {
     } else {
       void audioPlayer.unloadAudio();
     }
-    return () => {
-      void audioPlayer.unloadAudio();
-    };
+    // No unmount teardown: the global main player persists across navigation,
+    // so leaving the transcript no longer stops playback.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- load when audioUrl identity changes
   }, [audioUrl]);
 

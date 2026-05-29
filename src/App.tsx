@@ -9,6 +9,7 @@ import { useFonts, Cinzel_400Regular, Cinzel_600SemiBold, Cinzel_900Black,  } fr
 import { useFonts as useRobotoFonts, Roboto_400Regular, Roboto_500Medium, Roboto_600SemiBold, Roboto_700Bold } from '@expo-google-fonts/roboto';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Navigation } from './navigation';
+import { AudioPlayerProvider } from './contexts/AudioPlayerProvider';
 import { ExpoImageSplashScreen } from './components/ExpoImageSplashScreen';
 import { useAuthStore } from './store/authStore';
 import { useSubscriptionStore } from './store/subscriptionStore';
@@ -94,13 +95,15 @@ export function App() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <Navigation
-        theme={theme}
-        linking={{
-          enabled: 'auto',
-          prefixes: [prefix],
-        }}
-      />
+      <AudioPlayerProvider>
+        <Navigation
+          theme={theme}
+          linking={{
+            enabled: 'auto',
+            prefixes: [prefix],
+          }}
+        />
+      </AudioPlayerProvider>
     </GestureHandlerRootView>
   );
 }

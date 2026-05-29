@@ -138,6 +138,12 @@ export const FortyDay = () => {
     let cancelled = false;
 
     const prepareAudio = async () => {
+      // If this day's audio is already the loaded track, leave it alone so
+      // returning to the tab doesn't interrupt audio playing across navigation.
+      if (activeDay?.audioUrl && audioPlayer.currentUri === activeDay.audioUrl) {
+        return;
+      }
+
       await audioPlayer.unloadAudio();
       if (cancelled) return;
 
