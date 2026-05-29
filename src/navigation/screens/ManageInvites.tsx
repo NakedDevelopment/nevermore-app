@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -10,7 +10,7 @@ import {
   RefreshControl,
   Dimensions,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   Canvas,
@@ -99,9 +99,11 @@ export const ManageInvites: React.FC = () => {
   const width = Dimensions.get('window').width;
   const bg = useImage(require('../../assets/gradient.png'));
 
-  useEffect(() => {
-    loadInvitations();
-  }, []);
+  useFocusEffect(
+    React.useCallback(() => {
+      loadInvitations();
+    }, [])
+  );
 
   const loadInvitations = async () => {
     try {
@@ -171,7 +173,7 @@ export const ManageInvites: React.FC = () => {
         `You can only have up to ${MAX_INVITES} pending invitations. Please wait for some to be accepted or remove existing ones.`
       );
     } else {
-      navigateToInviteSend();
+      navigateToInviteSend({ fromManageInvites: true });
     }
   };
 

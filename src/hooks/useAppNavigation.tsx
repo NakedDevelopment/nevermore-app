@@ -30,7 +30,9 @@ export type RootStackParamList = {
     expire?: string;
     project?: string;
   } | undefined;
-  [ScreenNames.INVITE_SEND]: undefined;
+  [ScreenNames.INVITE_SEND]: {
+    fromManageInvites?: boolean;
+  } | undefined;
   [ScreenNames.TRIAL_WELCOME]: undefined;
   [ScreenNames.TRIAL_EXPIRED]: undefined;
   [ScreenNames.SUBSCRIPTION]: undefined;
@@ -84,7 +86,8 @@ export const useAppNavigation = () => {
     navigateToPurpose: () => navigation.navigate(ScreenNames.PURPOSE),
     navigateToNickname: () => navigation.navigate(ScreenNames.NICKNAME),
     navigateToInvite: () => navigation.navigate(ScreenNames.INVITE),
-    navigateToInviteSend: () => navigation.navigate(ScreenNames.INVITE_SEND),
+    navigateToInviteSend: (params?: { fromManageInvites?: boolean }) =>
+      navigation.navigate(ScreenNames.INVITE_SEND, params),
     navigateToTrialWelcome: () => navigation.navigate(ScreenNames.TRIAL_WELCOME),
     navigateToTrialExpired: () => navigation.navigate(ScreenNames.TRIAL_EXPIRED),
     navigateToSubscription: () => navigation.navigate(ScreenNames.SUBSCRIPTION),

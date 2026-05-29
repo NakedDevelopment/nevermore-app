@@ -9,7 +9,7 @@ import {
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import {
   Canvas,
   Image as SkiaImage,
@@ -27,9 +27,22 @@ import { showAppwriteError, showSuccessNotification } from '../../services/notif
 import { useOnboardingStore } from '../../store/onboardingStore';
 import { useAuthStore } from '../../store/authStore';
 import { getCurrentUser } from '../../services/auth.service';
+import { RootStackParamList } from '../../hooks/useAppNavigation';
+
+type InviteSendRouteProp = RouteProp<RootStackParamList, ScreenNames.INVITE_SEND>;
 
 export function InviteSend() {
   const navigation = useNavigation<any>();
+  const route = useRoute<InviteSendRouteProp>();
+  const fromManageInvites = route.params?.fromManageInvites ?? false;
+
+  const returnToManageInvites = () => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+    } else {
+      navigation.navigate(ScreenNames.MANAGE_INVITES);
+    }
+  };
   const [emails, setEmails] = useState<string[]>(['']);
   const [isLoading, setIsLoading] = useState(false);
   const { setCurrentStep } = useOnboardingStore();
@@ -124,8 +137,13 @@ export function InviteSend() {
           `Invitations sent successfully to ${validEmails.length} ${validEmails.length === 1 ? 'friend' : 'friends'}!`,
           'Invitations Sent'
       );
-      setCurrentStep(ScreenNames.TRIAL_WELCOME);
-      navigation.navigate(ScreenNames.TRIAL_WELCOME);
+
+      if (fromManageInvites) {
+        returnToManageInvites();
+      } else {
+        setCurrentStep(ScreenNames.TRIAL_WELCOME);
+        navigation.navigate(ScreenNames.TRIAL_WELCOME);
+      }
     
     } catch (error: unknown) {
       showAppwriteError(error, {
@@ -138,6 +156,10 @@ export function InviteSend() {
   };
 
   const handleSkip = () => {
+    if (fromManageInvites) {
+      returnToManageInvites();
+      return;
+    }
     setCurrentStep(ScreenNames.TRIAL_WELCOME);
     navigation.navigate(ScreenNames.TRIAL_WELCOME);
   };
