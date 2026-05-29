@@ -1,0 +1,1 @@
+- [Audio playback architecture](audio-playback-architecture.md) — central channel provider + global one-stream guard; all primary play handlers must use isLoading-guard → pause-if-playing → loadAndPlay (not togglePlayPause).

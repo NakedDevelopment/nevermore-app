@@ -168,13 +168,25 @@ export default function TemptationDetails() {
     navigation,
   ]);
 
-  // Only one stream at a time: starting main playback pauses reflection; question actions pause main (position preserved).
+  // Mirror the 40-Day Challenge's play handler so playback behaves identically
+  // across content types: ignore taps while loading, pause if already playing,
+  // otherwise load-and-play in a single call (which also pauses other channels
+  // via the provider's global one-stream guard). Pausing reflection up front
+  // keeps the local one-stream behavior even before loadAndPlay resolves.
   const handleMainPlayPause = React.useCallback(async () => {
-    if (!mainContentAudioPlayer.isPlaying) {
-      await reflectionAudioPlayer.pause();
+    if (mainContentAudioPlayer.isLoading) {
+      return;
     }
-    await mainContentAudioPlayer.togglePlayPause();
-  }, [mainContentAudioPlayer, reflectionAudioPlayer]);
+    if (mainContentAudioPlayer.isPlaying) {
+      await mainContentAudioPlayer.pause();
+      return;
+    }
+    if (!mainContentURL) {
+      return;
+    }
+    await reflectionAudioPlayer.pause();
+    await mainContentAudioPlayer.loadAndPlay(mainContentURL);
+  }, [mainContentAudioPlayer, reflectionAudioPlayer, mainContentURL]);
 
   const handleQuestionSelect = React.useCallback(
     async (index: number) => {
