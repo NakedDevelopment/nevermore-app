@@ -25,7 +25,7 @@ import Animated, {
   Extrapolate,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFortyDayStore } from '../../store/fortyDayStore';
+import { useFortyDayStore, Task } from '../../store/fortyDayStore';
 import { useFortyDayAudioPlayer } from '../../hooks/useFortyDayAudioPlayer';
 import { useHasFullAccess } from '../../hooks/useHasFullAccess';
 import { SubscriptionPopup } from '../../components/SubscriptionPopup';
@@ -45,7 +45,7 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const CARD_WIDTH = SCREEN_WIDTH * 0.6;
 
 export const FortyDay = () => {
-  const { raw: navigation, navigateToHelpSupport } = useAppNavigation();
+  const { raw: navigation, navigateToHelpSupport, navigateToTemptationDetails } = useAppNavigation();
   const insets = useSafeAreaInsets();
   
   const { 
@@ -181,6 +181,21 @@ export const FortyDay = () => {
       return;
     }
     toggleTask(currentDayData.day, taskId);
+  };
+
+  const handleOpenTaskContent = (task: Task) => {
+    if (!task.contentId) {
+      return;
+    }
+    if (!hasFullAccess) {
+      setSubscriptionPopupVisible(true);
+      return;
+    }
+    navigateToTemptationDetails({
+      contentId: task.contentId,
+      temptationTitle: task.title,
+      audioUrl: task.audioUrl,
+    });
   };
 
   const handlePlayPause = async (audioUrl: string) => {
@@ -407,18 +422,15 @@ export const FortyDay = () => {
               
               <View style={styles.tasksList}>
                 {currentDayData?.tasks.map((task, index) => {
-                  const temptationButton = (
+                  const temptationButton = task.contentId ? (
                     <Pressable
                       style={styles.temptationButton}
-                      onPress={() => {
-                        // TODO: navigate to the temptation set up in admin portal for this task
-                        console.log('Open temptation for task:', task.id);
-                      }}
+                      onPress={() => handleOpenTaskContent(task)}
                       hitSlop={8}
                     >
                       <ExternalLinkIcon width={18} height={18} />
                     </Pressable>
-                  );
+                  ) : null;
 
                   return (
                     <Pressable
