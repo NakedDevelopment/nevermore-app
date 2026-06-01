@@ -16,7 +16,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.nevermore.app",
-      "buildNumber": "25",
+      "buildNumber": "27",
       "splash": {
         "image": "./src/assets/splash-bg.png",
         "resizeMode": "cover",
@@ -30,12 +30,7 @@
       ],
       "appleTeamId": "C5DF3CP9LJ",
       "infoPlist": {
-        "UIBackgroundModes": [
-          "audio",
-          "audio",
-          "audio",
-          "audio"
-        ],
+        "UIBackgroundModes": ["audio", "audio", "audio", "audio"],
         "ITSAppUsesNonExemptEncryption": false
       }
     },
@@ -72,10 +67,7 @@
               "pathPrefix": "/invite"
             }
           ],
-          "category": [
-            "BROWSABLE",
-            "DEFAULT"
-          ]
+          "category": ["BROWSABLE", "DEFAULT"]
         },
         {
           "action": "VIEW",
@@ -97,10 +89,7 @@
               "pathPrefix": "/invite"
             }
           ],
-          "category": [
-            "BROWSABLE",
-            "DEFAULT"
-          ]
+          "category": ["BROWSABLE", "DEFAULT"]
         }
       ],
       "permissions": [
