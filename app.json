@@ -16,16 +16,27 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.nevermore.app",
-      "buildNumber": "27",
+      "buildNumber": "25",
       "splash": {
         "image": "./src/assets/splash-bg.png",
         "resizeMode": "cover",
         "backgroundColor": "#000"
       },
-      "associatedDomains": ["applinks:nevermoreapp.com"],
+      "associatedDomains": [
+        "applinks:nevermoreapp.com",
+        "applinks:nevermoreapp.com",
+        "applinks:nevermoreapp.com",
+        "applinks:nevermoreapp.com"
+      ],
       "appleTeamId": "C5DF3CP9LJ",
       "infoPlist": {
-        "UIBackgroundModes": ["audio"]
+        "UIBackgroundModes": [
+          "audio",
+          "audio",
+          "audio",
+          "audio"
+        ],
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -61,10 +72,40 @@
               "pathPrefix": "/invite"
             }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        },
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "nevermoreapp.com",
+              "pathPrefix": "/reset-password"
+            },
+            {
+              "scheme": "https",
+              "host": "nevermoreapp.com",
+              "pathPrefix": "/create-new-password"
+            },
+            {
+              "scheme": "https",
+              "host": "nevermoreapp.com",
+              "pathPrefix": "/invite"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ],
       "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
         "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS"
       ]
@@ -88,6 +129,12 @@
       "eas": {
         "projectId": "2158a613-0b10-4a89-8601-c6ac4e2389a9"
       }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/2158a613-0b10-4a89-8601-c6ac4e2389a9"
     }
   }
 }
