@@ -59,6 +59,10 @@ externalPort = 3000
 localPort = 5173
 externalPort = 5173
 
+[[ports]]
+localPort = 8081
+externalPort = 8081
+
 [deployment]
 deploymentTarget = "static"
 build = ["sh", "-c", "node scripts/patch-zustand.js && npx expo export --platform web"]
