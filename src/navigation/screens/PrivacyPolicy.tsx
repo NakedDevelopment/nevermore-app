@@ -10,6 +10,7 @@ import { useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 import ChevronLeftIcon from '../../assets/icons/chevron-left';
+import { LEGAL_WEBVIEW_DARK_THEME_SCRIPT } from '../../constants/legalWebViewTheme';
 
 const PRIVACY_URL =
   'https://app.termly.io/policy-viewer/policy.html?policyUUID=bf4f1df0-fd2a-4fee-8933-8f2c781da8a4';
@@ -35,6 +36,7 @@ export const PrivacyPolicy: React.FC = () => {
         <WebView
           source={{ uri: PRIVACY_URL }}
           style={styles.webView}
+          injectedJavaScript={LEGAL_WEBVIEW_DARK_THEME_SCRIPT}
           startInLoadingState
           renderLoading={() => (
             <ActivityIndicator
