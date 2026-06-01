@@ -39,7 +39,7 @@ import PauseIcon from '../../assets/icons/pause';
 import BackwardIcon from '../../assets/icons/backward10';
 import Forward10Icon from '../../assets/icons/forward10';
 import CheckmarkIcon from '../../assets/icons/checkmark';
-import ExternalLinkIcon from '../../assets/icons/external-link';
+import LinkIcon from '../../assets/icons/link';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const CARD_WIDTH = SCREEN_WIDTH * 0.6;
@@ -428,14 +428,25 @@ export const FortyDay = () => {
               
               <View style={styles.tasksList}>
                 {currentDayData?.tasks.map((task, index) => {
-                  const temptationButton = task.contentId ? (
+                  const isLinked = !!task.contentId;
+
+                  const linkRow = isLinked ? (
                     <Pressable
-                      style={styles.temptationButton}
+                      style={styles.taskLinkRow}
                       onPress={() => handleOpenTaskContent(task)}
                       hitSlop={8}
                     >
-                      <ExternalLinkIcon width={18} height={18} />
+                      <LinkIcon width={14} height={14} color="#8B5CF6" />
+                      <Text style={styles.taskLinkText}>Tap to open temptation</Text>
                     </Pressable>
+                  ) : null;
+
+                  const chevron = isLinked ? (
+                    <ChevronRightIcon
+                      width={18}
+                      height={18}
+                      style={styles.taskLinkChevron}
+                    />
                   ) : null;
 
                   const taskIconSource = task.icon
@@ -460,11 +471,12 @@ export const FortyDay = () => {
                             </View>
                             <View style={styles.taskTextContainer}>
                               <Text style={styles.taskTitle}>{task.title}</Text>
+                              {linkRow}
                             </View>
                           </View>
 
                           <View style={styles.taskRight}>
-                            {temptationButton}
+                            {chevron}
                             <View
                               style={[
                                 styles.checkbox,
@@ -483,11 +495,12 @@ export const FortyDay = () => {
                             </View>
                             <View style={styles.taskTextContainer}>
                               <Text style={styles.taskTitle}>{task.title}</Text>
+                              {linkRow}
                             </View>
                           </View>
 
                           <View style={styles.taskRight}>
-                            {temptationButton}
+                            {chevron}
                             <View style={styles.checkbox} />
                           </View>
                         </View>
@@ -777,15 +790,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
   },
-  temptationButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    backgroundColor: 'rgba(139, 92, 246, 0.25)',
-    borderWidth: 1,
-    borderColor: 'rgba(139, 92, 246, 0.45)',
-    justifyContent: 'center',
+  taskLinkRow: {
+    flexDirection: 'row',
     alignItems: 'center',
+    marginTop: 2,
+  },
+  taskLinkText: {
+    fontFamily: 'Roboto_500Medium',
+    fontSize: 13,
+    color: '#8B5CF6',
+    marginLeft: 6,
+  },
+  taskLinkChevron: {
+    opacity: 0.5,
   },
   soundWaveContainer: {
     width: 48,
