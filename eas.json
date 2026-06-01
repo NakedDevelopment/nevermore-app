@@ -54,8 +54,8 @@
   "submit": {
     "production": {
       "ios": {
-        "appleId": "REPLACE_WITH_YOUR_APPLE_ID_EMAIL",
-        "ascAppId": "REPLACE_WITH_APP_STORE_CONNECT_APP_ID",
+        "appleId": "vard@nakeddev.com",
+        "ascAppId": "6754863979",
         "appleTeamId": "C5DF3CP9LJ"
       },
       "android": {
