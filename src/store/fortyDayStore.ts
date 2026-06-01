@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { contentService, Content } from '../services/content.service';
-import { getFirstFileUrl } from '../utils/storageUtils';
+import { getFirstFileUrl, getFileUrl } from '../utils/storageUtils';
 
 export interface Task {
   id: string;
@@ -12,6 +12,12 @@ export interface Task {
   contentId?: string;
   audioUrl?: string;
   duration?: number;
+  /**
+   * Per-task icon URL set in the admin dashboard. May be an Appwrite file ID or
+   * a full URL; normalized to a URL via getFileUrl. Undefined for older tasks
+   * that have no icon, in which case the app falls back to a default icon.
+   */
+  icon?: string;
 }
 
 const FREE_JOURNEY_DAYS_MAX = 3;
@@ -49,7 +55,12 @@ const convertContentToTasks = (content: Content): Task[] => {
         const taskObj = typeof taskString === 'string' ? JSON.parse(taskString) : taskString;
         
         const taskId = taskObj.id || taskObj.$id || `task-${index}`;
-        
+
+        const iconRaw =
+          taskObj.icon || taskObj.iconUrl || taskObj.image || taskObj.imageUrl;
+        const icon =
+          typeof iconRaw === 'string' ? getFileUrl(iconRaw) : undefined;
+
         return {
           id: taskId,
           title: taskObj.title || `Task ${index + 1}`,
@@ -58,6 +69,7 @@ const convertContentToTasks = (content: Content): Task[] => {
           contentId: taskObj.contentId,
           audioUrl: taskObj.audioUrl,
           duration: taskObj.duration,
+          icon,
         };
       } catch (error) {
         return {

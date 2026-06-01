@@ -438,6 +438,10 @@ export const FortyDay = () => {
                     </Pressable>
                   ) : null;
 
+                  const taskIconSource = task.icon
+                    ? { uri: task.icon }
+                    : require('../../assets/task.png');
+
                   return (
                     <Pressable
                       key={task.id}
@@ -452,7 +456,7 @@ export const FortyDay = () => {
                         >
                           <View style={styles.taskLeft}>
                             <View style={styles.soundWaveContainer}>
-                              <Image source={require('../../assets/task.png')} style={styles.ravenIcon} />
+                              <Image source={taskIconSource} style={styles.ravenIcon} />
                             </View>
                             <View style={styles.taskTextContainer}>
                               <Text style={styles.taskTitle}>{task.title}</Text>
@@ -475,7 +479,7 @@ export const FortyDay = () => {
                         <View style={styles.taskItem}>
                           <View style={styles.taskLeft}>
                             <View style={styles.soundWaveContainer}>
-                              <Image source={require('../../assets/task.png')} style={styles.ravenIcon} />
+                              <Image source={taskIconSource} style={styles.ravenIcon} />
                             </View>
                             <View style={styles.taskTextContainer}>
                               <Text style={styles.taskTitle}>{task.title}</Text>
