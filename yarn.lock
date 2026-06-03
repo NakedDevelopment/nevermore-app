@@ -2205,6 +2205,11 @@ big-integer@1.6.x:
   resolved "https://registry.npmjs.org/big-integer/-/big-integer-1.6.52.tgz"
   integrity sha512-QxD8cf2eVqJOOz63z6JIN9BzvVs/dlySa5HGSBH5xtR8dPteIRQnBxxKqkNTiT6jbDTF6jAfrd4oMcND9RGbQg==
 
+bignumber.js@^9.0.0:
+  version "9.3.1"
+  resolved "https://registry.yarnpkg.com/bignumber.js/-/bignumber.js-9.3.1.tgz#759c5aaddf2ffdc4f154f7b493e1c8770f88c4d7"
+  integrity sha512-Ko0uX15oIUS7wJ3Rb30Fs6SkVbLmPBAKdlm7q9+ak9bbIeFf0MwuBsQV6z7+X768/cHsfg+WlysDWJcmthjsjQ==
+
 boolbase@^1.0.0:
   version "1.0.0"
   resolved "https://registry.npmjs.org/boolbase/-/boolbase-1.0.0.tgz"
@@ -3562,6 +3567,13 @@ jsesc@^3.0.2, jsesc@~3.1.0:
   resolved "https://registry.npmjs.org/jsesc/-/jsesc-3.1.0.tgz"
   integrity sha512-/sM3dO2FOzXjKQhJuo0Q173wf2KOo8t4I8vHy6lF9poUp7bKT0/NHE8fPX23PwfhnykfqnC2xRxOnVw5XuGIaA==
 
+json-bigint@1.0.0:
+  version "1.0.0"
+  resolved "https://registry.yarnpkg.com/json-bigint/-/json-bigint-1.0.0.tgz#ae547823ac0cad8398667f8cd9ef4730f5b01ff1"
+  integrity sha512-SiPv/8VpZuWbvLSMtTDU8hEfrZWg/mH/nV/b4o0CYbSxu1UIQPLdwKOCIyLQX+VIPO5vrLX3i8qtqFyhdPSUSQ==
+  dependencies:
+    bignumber.js "^9.0.0"
+
 json-schema-traverse@^1.0.0:
   version "1.0.0"
   resolved "https://registry.yarnpkg.com/json-schema-traverse/-/json-schema-traverse-1.0.0.tgz#ae7bcb3656ab77a73ba5c49bf654f38e6b6860e2"
@@ -4459,12 +4471,13 @@ react-is@^19.1.0:
   resolved "https://registry.npmjs.org/react-is/-/react-is-19.2.0.tgz"
   integrity sha512-x3Ax3kNSMIIkyVYhWPyO09bu0uttcAIoecO/um/rKGQ4EltYWVYtyiGkS/3xMynrbVQdS69Jhlv8FXUEZehlzA==
 
-react-native-appwrite@^0.18.0:
-  version "0.18.0"
-  resolved "https://registry.npmjs.org/react-native-appwrite/-/react-native-appwrite-0.18.0.tgz"
-  integrity sha512-UtXqNd4ajXrZTUXG2mi/F1WNrnAUKzyvV0taDLsfJ+9HErqQPJ0UkYNPWVov+PSULIrTowaLmuordfwf+UW5lQ==
+react-native-appwrite@^0.31.0:
+  version "0.31.0"
+  resolved "https://registry.yarnpkg.com/react-native-appwrite/-/react-native-appwrite-0.31.0.tgz#7563f3db8db51d6def539a69764a8f581012b608"
+  integrity sha512-BY2t1ot0pg/wLxZ+vLZHx5NRZSPSKNypGxPVENLWJC+Tp/Y2V+UEd/yoBl/FqSBHmf0enKlGZwyNNM0WvbJukA==
   dependencies:
     expo-file-system "18.*.*"
+    json-bigint "1.0.0"
     react-native ">=0.76.7 <1.0.0"
 
 react-native-dotenv@^3.4.11:
