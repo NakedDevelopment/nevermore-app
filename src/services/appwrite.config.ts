@@ -28,6 +28,15 @@ const appwriteConfig = {
 };
 
 
+// TEMP DEBUG: log public Appwrite/IAP config baked into the build (no secrets).
+// Remove after confirming TestFlight values.
+console.log('[appwrite.config] APPWRITE_ENDPOINT:', APPWRITE_ENDPOINT);
+console.log('[appwrite.config] APPWRITE_PROJECT_ID:', APPWRITE_PROJECT_ID);
+console.log('[appwrite.config] APPWRITE_PLATFORM:', APPWRITE_PLATFORM);
+console.log('[appwrite.config] IAP_PRODUCT_ID_MONTHLY:', IAP_PRODUCT_ID_MONTHLY);
+console.log('[appwrite.config] IAP_PRODUCT_ID_YEARLY:', IAP_PRODUCT_ID_YEARLY);
+console.log('[appwrite.config] appwriteConfig:', appwriteConfig);
+
 const client = new Client()
   .setEndpoint(appwriteConfig.endpoint)
   .setProject(appwriteConfig.projectId)
