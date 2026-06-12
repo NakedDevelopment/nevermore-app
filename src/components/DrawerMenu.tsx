@@ -30,6 +30,7 @@ interface MenuItemProps {
   isSubItem?: boolean;
   showChevron?: boolean;
   chevronUp?: boolean;
+  testID?: string;
 }
 
 const MenuItem: React.FC<MenuItemProps> = ({
@@ -39,11 +40,13 @@ const MenuItem: React.FC<MenuItemProps> = ({
   isSubItem = false,
   showChevron = false,
   chevronUp = false,
+  testID,
 }) => (
   <TouchableOpacity
     style={[styles.menuItem, isSubItem && styles.subMenuItem]}
     onPress={onPress}
     activeOpacity={0.7}
+    testID={testID}
   >
     <View style={styles.menuItemLeft}>
       {icon}
@@ -147,6 +150,7 @@ export const CustomDrawerContent = (props: any) => {
             icon={<AccountIcon color="#fff" width={24} height={24} />}
             text="Account Settings"
             onPress={handleAccountSettings}
+            testID="drawer-profile"
           />
           <Separator />
 
@@ -179,6 +183,7 @@ export const CustomDrawerContent = (props: any) => {
             icon={<SubscriptionsIcon color="#fff" width={24} height={24} />}
             text="Subscriptions"
             onPress={handleSubscriptions}
+            testID="drawer-subscription"
           />
           <Separator />
 
@@ -193,6 +198,7 @@ export const CustomDrawerContent = (props: any) => {
             icon={<SignOutIcon color="#fff" width={24} height={24} />}
             text="Sign Out"
             onPress={handleSignOut}
+            testID="drawer-sign-out"
           />
           <Separator />
         </View>

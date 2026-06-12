@@ -6,7 +6,12 @@
     "start": "expo start --dev-client",
     "web": "expo start --web",
     "android": "expo run:android",
-    "ios": "expo run:ios"
+    "ios": "expo run:ios",
+    "detox:build:ios": "detox build --configuration ios.sim.debug",
+    "detox:build:android": "detox build --configuration android.emu.debug",
+    "detox:test:ios": "detox test --configuration ios.sim.debug",
+    "detox:test:android": "detox test --configuration android.emu.debug",
+    "detox:test:regression": "detox test --configuration ios.sim.debug --testNamePattern='\\[REGRESSION\\]'"
   },
   "dependencies": {
     "@expo-google-fonts/cinzel": "^0.4.2",
@@ -62,8 +67,13 @@
   },
   "devDependencies": {
     "@babel/core": "^7.20.0",
+    "@types/jest": "^30.0.0",
     "@types/react": "~19.1.10",
+    "detox": "^20.46.0",
+    "detox-cli": "^20.0.0",
+    "jest": "^30.2.0",
     "react-native-dotenv": "^3.4.11",
+    "ts-jest": "^29.4.5",
     "typescript": "~5.9.2"
   },
   "private": true

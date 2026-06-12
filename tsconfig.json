@@ -3,5 +3,9 @@
   "compilerOptions": {
     "moduleResolution": "bundler",
     "strict": true
-  }
+  },
+  "exclude": [
+    "e2e",
+    "__mocks__"
+  ]
 }
