@@ -58,7 +58,7 @@ export const ForgotPassword: React.FC = () => {
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           >
         <View style={styles.header}>
-          <TouchableOpacity onPress={goBack} style={styles.backButton}>
+          <TouchableOpacity onPress={goBack} style={styles.backButton} testID="back-button">
             <ArrowLeftIcon width={24} height={24} color="#ffffff" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Nevermore</Text>
@@ -80,11 +80,12 @@ export const ForgotPassword: React.FC = () => {
             placeholder="Enter email address"
             autoCapitalize="none"
             autoCorrect={false}
+            testID="forgot-password-email"
           />
 
           {errorMessage !== '' && (
             <View style={styles.errorContainer}>
-              <Text style={styles.errorText}>{errorMessage}</Text>
+              <Text style={styles.errorText} testID="forgot-password-error">{errorMessage}</Text>
             </View>
           )}
 

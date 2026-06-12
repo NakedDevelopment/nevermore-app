@@ -157,11 +157,12 @@ export function Bookmark() {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={styles.container} testID="bookmark-screen">
       <Animated.View style={[styles.header, { paddingTop: insets.top }, headerAnimatedStyle]}>
         <TouchableOpacity 
           style={styles.menuButton}
           onPress={() => navigation.dispatch(DrawerActions.openDrawer())}
+          testID="drawer-menu-button"
         >
           <MenuIcon />
         </TouchableOpacity>

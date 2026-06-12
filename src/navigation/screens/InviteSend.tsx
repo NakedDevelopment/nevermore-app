@@ -215,7 +215,7 @@ export function InviteSend() {
       <SafeAreaView style={styles.safeArea}>
         <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
         <View style={styles.header}>
-            <TouchableOpacity onPress={() => navigation.goBack()}>
+            <TouchableOpacity onPress={() => navigation.goBack()} testID="back-button">
               <ArrowLeftIcon />
             </TouchableOpacity>
             <Text style={styles.headerTitle}>Nevermore</Text>
@@ -245,6 +245,7 @@ export function InviteSend() {
                         keyboardType="email-address"
                         autoCapitalize="none"
                         autoCorrect={false}
+                        testID={`invite-email-${index}`}
                       />
                     </View>
                     {emails.length > 1 && (
@@ -279,6 +280,7 @@ export function InviteSend() {
               size="medium"
               disabled={!isNextEnabled}
               style={styles.nextButton}
+              testID="onboarding-continue"
             />
             <SecondaryButton
               title="Skip"
@@ -286,6 +288,7 @@ export function InviteSend() {
               size="medium"
               style={styles.skipButton}
               textStyle={styles.skipButtonText}
+              testID="onboarding-skip"
             />
           </View>
         </SafeAreaView>

@@ -294,7 +294,7 @@ export function Invite() {
             </Canvas>
             <SafeAreaView style={styles.safeArea}>
                     <View style={styles.header}>
-                        <TouchableOpacity onPress={() => navigation.goBack()}>
+                        <TouchableOpacity onPress={() => navigation.goBack()} testID="back-button">
                             <ArrowLeftIcon />
                         </TouchableOpacity>
                         <Text style={styles.headerTitle}>Nevermore</Text>
@@ -356,6 +356,7 @@ export function Invite() {
                             variant="primary"
                             size="medium"
                             style={styles.nextButton}
+                            testID="onboarding-continue"
                         />
                         <SecondaryButton
                             title="Skip"
@@ -363,6 +364,7 @@ export function Invite() {
                             size="medium"
                             style={styles.skipButton}
                             textStyle={styles.skipButtonText}
+                            testID="onboarding-skip"
                         />
                     </View>
                 </SafeAreaView>

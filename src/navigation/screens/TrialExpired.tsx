@@ -52,7 +52,7 @@ export function TrialExpired() {
   }, [navigation, signOut]);
 
   return (
-    <View style={styles.container}>
+    <View style={styles.container} testID="trial-expired-screen">
       <StatusBar barStyle="light-content" backgroundColor="#000000" />
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.content}>
@@ -69,11 +69,13 @@ export function TrialExpired() {
             variant="primary"
             size="medium"
             disabled={isLoading}
+            testID="trial-expired-subscribe"
           />
           <TouchableOpacity
             style={styles.linkButton}
             onPress={handleRestore}
             disabled={isLoading}
+            testID="restore-purchases-btn"
           >
             <Text style={styles.linkButtonText}>Restore Purchase</Text>
           </TouchableOpacity>
@@ -81,6 +83,7 @@ export function TrialExpired() {
             style={styles.linkButton}
             onPress={handleLogout}
             disabled={isLoading}
+            testID="trial-expired-logout"
           >
             <Text style={styles.logoutText}>Log out</Text>
           </TouchableOpacity>
