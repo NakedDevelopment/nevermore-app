@@ -16,7 +16,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.nevermore.app",
-      "buildNumber": "57",
+      "buildNumber": "58",
       "splash": {
         "image": "./src/assets/splash-bg.png",
         "resizeMode": "cover",
