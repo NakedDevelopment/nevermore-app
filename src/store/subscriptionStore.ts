@@ -76,13 +76,26 @@ export const useSubscriptionStore = create<SubscriptionState>()(
       },
 
       checkSubscription: async () => {
-        const { iapService } = await import('../services/iap.service');
         set({ isLoading: true, error: null });
         try {
-          const isSubscribed = await iapService.checkSubscription();
-          const activePlan = isSubscribed ? await iapService.getActiveSubscriptionPlan() : null;
-          set({ isSubscribed, activePlan, isLoading: false, error: null });
-          syncCurrentUserSubscriptionStatus(isSubscribed);
+          const [{ getCurrentUser }, { userProfileService }] = await Promise.all([
+            import('../services/auth.service'),
+            import('../services/userProfile.service'),
+          ]);
+          const user = await getCurrentUser();
+          if (!user) {
+            set({ isSubscribed: false, activePlan: null, isLoading: false, error: null });
+            return;
+          }
+
+          const profile = await userProfileService.getUserProfileByAuthId(user.$id);
+          const isSubscribed = profile?.subscription_status === 'active';
+          set({
+            isSubscribed,
+            activePlan: isSubscribed ? get().activePlan : null,
+            isLoading: false,
+            error: null,
+          });
         } catch (err) {
           const message = err instanceof Error ? err.message : 'Failed to check subscription';
           set({ isLoading: false, error: message });
