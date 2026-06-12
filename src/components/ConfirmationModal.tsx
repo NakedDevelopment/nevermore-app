@@ -43,7 +43,6 @@ export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
           
           <View style={styles.buttonContainer}>
             <TouchableOpacity
-              testID="confirmation-cancel"
               style={styles.cancelButton}
               onPress={onCancel}
               activeOpacity={0.7}
@@ -54,7 +53,6 @@ export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
             <View style={styles.separator} />
             
             <TouchableOpacity
-              testID="confirmation-confirm"
               style={styles.confirmButton}
               onPress={onConfirm}
               activeOpacity={0.7}

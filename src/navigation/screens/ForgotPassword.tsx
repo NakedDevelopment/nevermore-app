@@ -95,7 +95,6 @@ export const ForgotPassword: React.FC = () => {
             disabled={isLoading || !isEmailValid}
             style={styles.nextButton}
             size="medium"
-            testID="forgot-password-submit"
           />
         </View>
           </KeyboardAvoidingView>

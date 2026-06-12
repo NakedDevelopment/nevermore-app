@@ -62,13 +62,12 @@ export function Welcome() {
             variant="primary"
             size="medium"
             style={styles.createAccountButton}
-            testID="welcome-create-account"
           />
           
           <View style={styles.signInContainer}>
             <Text style={styles.signInText}>
               Already have an account?{' '}
-              <Text style={styles.signInLink} onPress={handleSignIn} testID="welcome-sign-in">
+              <Text style={styles.signInLink} onPress={handleSignIn}>
                 Sign In
               </Text>
             </Text>

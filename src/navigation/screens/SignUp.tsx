@@ -233,7 +233,6 @@ export function SignUp() {
                     !agreeToTerms
                   }
                   style={styles.createAccountButton}
-                  testID="signup-submit"
                 />
               </View>
             </ScrollView>

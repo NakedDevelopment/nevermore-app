@@ -140,7 +140,6 @@ export function SignIn() {
                 variant="primary"
                 size="medium"
                 disabled={isLoading}
-                testID="signin-submit"
               />
             </View>
           </KeyboardAvoidingView>
