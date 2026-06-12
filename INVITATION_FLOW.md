@@ -13,15 +13,15 @@ This document describes the complete invitation flow using Appwrite Magic URL fo
 - User enters friend's email address
 - System calls `invitationService.createInvitation({ email })`
 - Service generates unique `invitationToken`
-- Creates Magic URL: `https://nevermore-admin-app.vercel.app/invite?token={invitationToken}`
+- Creates Magic URL: `https://nevermoreapp.com/invite?token={invitationToken}`
 - Appwrite sends email with magic link (automatically appends `userId` and `secret`)
-- Final link: `https://nevermore-admin-app.vercel.app/invite?token=ABC&userId=XYZ&secret=123`
+- Final link: `https://nevermoreapp.com/invite?token=ABC&userId=XYZ&secret=123`
 - Invitation record saved to database with status: `pending`
 
 **Code:**
 ```typescript
 const invitationToken = ID.unique();
-const deepLink = `https://nevermore-admin-app.vercel.app/invite?token=${invitationToken}`;
+const deepLink = `https://nevermoreapp.com/invite?token=${invitationToken}`;
 
 await account.createMagicURLToken({
   userId: ID.unique(),
@@ -192,7 +192,7 @@ Required attributes:
 ## Deep Linking Configuration
 
 **URL Structure:**
-- Invitation: `https://nevermore-admin-app.vercel.app/invite?token=ABC&userId=XYZ&secret=123`
+- Invitation: `https://nevermoreapp.com/invite?token=ABC&userId=XYZ&secret=123`
 - Magic URL Verify: `https://nevermore-admin-app.vercel.app/verify-magic-url?userId=XYZ&secret=123`
 - Password Reset: `https://nevermore-admin-app.vercel.app/reset-password?userId=XYZ&secret=123`
 

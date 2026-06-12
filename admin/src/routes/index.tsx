@@ -75,6 +75,10 @@ export const router = createBrowserRouter([
     element: <DeepLinkRedirect />,
   },
   {
+    path: '/invite',
+    element: <DeepLinkRedirect />,
+  },
+  {
     path: '/dashboard',
     element: (
       <ProtectedRoute>

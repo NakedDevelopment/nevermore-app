@@ -2,6 +2,7 @@ export const initConnection = async () => true;
 export const endConnection = async () => true;
 export const requestPurchase = async () => undefined;
 export const getAvailablePurchases = async () => [];
+export const getActiveSubscriptions = async () => [];
 export const purchaseUpdatedListener = () => ({ remove: () => {} });
 export const purchaseErrorListener = () => ({ remove: () => {} });
 export const finishTransaction = async () => undefined;

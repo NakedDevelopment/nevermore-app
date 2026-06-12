@@ -1,7 +1,6 @@
 import { Assets as NavigationAssets } from '@react-navigation/elements';
 import { DarkTheme, DefaultTheme } from '@react-navigation/native';
 import { Asset } from 'expo-asset';
-import { createURL } from 'expo-linking';
 import * as SplashScreen from 'expo-splash-screen';
 import * as React from 'react';
 import { useColorScheme } from 'react-native';
@@ -19,7 +18,6 @@ SplashScreen.preventAutoHideAsync();
 
 export function App() {
   const colorScheme = useColorScheme();
-  const prefix = React.useMemo(() => createURL('/'), []);
   const [cinzelFontsLoaded] = useFonts({
     Cinzel_400Regular,
     Cinzel_600SemiBold,
@@ -57,6 +55,10 @@ export function App() {
       require('./assets/newspaper.png'),
       require('./assets/App_Icon.png'),
       require('./assets/splash-bg.png'),
+      require('./assets/main-bg.png'),
+      require('./assets/card-bg.png'),
+      require('./assets/bookmark-empty.png'),
+      require('./assets/task.png'),
     ]).then(() => {
       setAssetsLoaded(true);
     }).catch(() => {
@@ -75,9 +77,7 @@ export function App() {
         iapService.setSubscriptionUpdater((value: boolean) => {
           useSubscriptionStore.getState().setSubscribed(value);
         });
-        iapService.checkSubscription().then((active) => {
-          useSubscriptionStore.getState().setSubscribed(active);
-        });
+        useSubscriptionStore.getState().checkSubscription();
       });
     }
   }, [cinzelFontsLoaded, robotoFontsLoaded, assetsLoaded, checkAuth]);
@@ -98,10 +98,6 @@ export function App() {
       <AudioPlayerProvider>
         <Navigation
           theme={theme}
-          linking={{
-            enabled: 'auto',
-            prefixes: [prefix],
-          }}
         />
       </AudioPlayerProvider>
     </GestureHandlerRootView>

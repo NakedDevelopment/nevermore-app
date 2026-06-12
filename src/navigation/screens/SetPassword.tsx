@@ -98,10 +98,10 @@ export const SetPassword: React.FC = () => {
             </View>
 
             <View style={styles.content}>
-              <Text style={styles.title}>SET YOUR PASSWORD</Text>
+              <Text style={styles.title}>CREATE YOUR ACCOUNT</Text>
               
               <Text style={styles.description}>
-                Create a secure password to protect your account.
+                Create a secure password to finish setting up your invited account.
               </Text>
 
               <PasswordInput
@@ -171,7 +171,7 @@ export const SetPassword: React.FC = () => {
               </View>
 
               <Button
-                title="Continue"
+                title="Create Account"
                 onPress={handleSetPassword}
                 loading={isLoading}
                 disabled={!isValidPassword}

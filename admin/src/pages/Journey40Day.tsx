@@ -1,6 +1,7 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, type ChangeEvent } from 'react';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { Button } from '../components/Button';
+import { Select, type SelectOption } from '../components/Select';
 import { AudioPlayer } from '../components/AudioPlayer';
 import { FileUploadPopup, type UploadFile } from '../components/FileUploadPopup';
 import { ConfirmDeleteModal } from '../components/ConfirmDeleteModal';
@@ -11,11 +12,18 @@ import {
   deleteContent,
   publishContent,
   updateContentWithFiles,
+  fetchContent,
   fetchContentById,
   fetchFortyDayJourneyByDay,
   type ContentDocument,
 } from '../lib/content';
 import { showAppwriteError } from '../lib/notifications';
+import {
+  deleteTaskIcon,
+  fetchTaskIcons,
+  uploadTaskIcon,
+  type TaskIcon,
+} from '../lib/taskIcons';
 
 interface JourneyData {
   id?: string;
@@ -25,17 +33,107 @@ interface JourneyData {
   day?: number;
 }
 
+type JourneyTaskType = 'standard' | 'navigation';
+
+interface JourneyTaskForm {
+  id: string;
+  title: string;
+  taskType: JourneyTaskType;
+  contentId: string;
+  icon: string;
+}
+
+const createEmptyTask = (): JourneyTaskForm => ({
+  id: `task-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  title: '',
+  taskType: 'standard',
+  contentId: '',
+  icon: '',
+});
+
+const parseTask = (task: string, index: number): JourneyTaskForm => {
+  try {
+    const parsed = JSON.parse(task) as {
+      id?: string;
+      $id?: string;
+      title?: string;
+      type?: string;
+      taskType?: string;
+      contentId?: string;
+      icon?: string;
+      iconUrl?: string;
+    };
+    const contentId = typeof parsed.contentId === 'string' ? parsed.contentId : '';
+    const rawType = parsed.taskType || parsed.type;
+    const taskType: JourneyTaskType =
+      rawType === 'navigation' || contentId ? 'navigation' : 'standard';
+
+    return {
+      id: parsed.id || parsed.$id || `task-${index}`,
+      title: parsed.title || '',
+      taskType,
+      contentId,
+      icon: parsed.icon || parsed.iconUrl || '',
+    };
+  } catch {
+    return {
+      id: `task-${index}`,
+      title: task,
+      taskType: 'standard',
+      contentId: '',
+      icon: '',
+    };
+  }
+};
+
+const parseTasks = (taskStrings?: string[]): JourneyTaskForm[] => {
+  if (!taskStrings || taskStrings.length === 0) {
+    return [createEmptyTask()];
+  }
+
+  return taskStrings.map(parseTask);
+};
+
+const serializeTask = (task: JourneyTaskForm): string => {
+  const title = task.title.trim();
+  const hasMetadata = task.taskType === 'navigation' || !!task.icon;
+
+  if (!hasMetadata) {
+    return title;
+  }
+
+  return JSON.stringify({
+    id: task.id,
+    title,
+    type: task.taskType,
+    subtitle: task.taskType === 'navigation' ? 'Navigation Task' : 'Standard Task',
+    contentId: task.taskType === 'navigation' ? task.contentId : undefined,
+    icon: task.icon || undefined,
+  });
+};
+
+const getContentTypeLabel = (type: string): string => {
+  if (type === 'forty_day_journey') return '40 Day Journey';
+  if (type === 'forty_temptations') return 'Temptation';
+  return type;
+};
+
 export const Journey40Day = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const params = useParams();
+  const iconInputRef = useRef<HTMLInputElement>(null);
   const journeyData = location.state?.journeyData as JourneyData | undefined;
   const isEditMode = !!params.id || !!journeyData;
   const contentId = params.id || journeyData?.id;
 
   const [contentTitle, setContentTitle] = useState('');
   const [day, setDay] = useState<number | ''>('');
-  const [tasks, setTasks] = useState<string[]>(['']);
+  const [tasks, setTasks] = useState<JourneyTaskForm[]>([createEmptyTask()]);
+  const [contentOptions, setContentOptions] = useState<SelectOption[]>([]);
+  const [taskIcons, setTaskIcons] = useState<TaskIcon[]>([]);
+  const [isUploadingTaskIcon, setIsUploadingTaskIcon] = useState(false);
+  const [isDeletingTaskIcon, setIsDeletingTaskIcon] = useState(false);
   const [isUploadPopupOpen, setIsUploadPopupOpen] = useState(false);
   const [uploadedAudioFiles, setUploadedAudioFiles] = useState<File[]>([]);
   const [uploadedAudioUrls, setUploadedAudioUrls] = useState<string[]>([]);
@@ -57,6 +155,20 @@ export const Journey40Day = () => {
     if (day === '') return false;
     return !!dayError || dayValidationPending;
   }, [day, dayError, dayValidationPending]);
+
+  const iconOptions: SelectOption[] = useMemo(
+    () => [
+      { value: '', label: 'Default task icon' },
+      ...taskIcons.map((icon) => ({
+        value: icon.url,
+        label: icon.name,
+      })),
+    ],
+    [taskIcons]
+  );
+
+  const getInvalidNavigationTask = () =>
+    tasks.find((task) => task.title.trim() && task.taskType === 'navigation' && !task.contentId);
 
   // Real-time day validation (range + duplicate check)
   useEffect(() => {
@@ -113,6 +225,32 @@ export const Journey40Day = () => {
     };
   }, [day, contentId, isEditMode, isEditing]);
 
+  useEffect(() => {
+    const loadTaskConfigurationData = async () => {
+      try {
+        const [contentResult, icons] = await Promise.all([
+          fetchContent(1000, 0),
+          fetchTaskIcons(),
+        ]);
+
+        setContentOptions([
+          { value: '', label: 'Select content to navigate to...' },
+          ...contentResult.documents
+            .filter((doc) => doc.$id !== contentId)
+            .map((doc) => ({
+              value: doc.$id,
+              label: `${doc.title || 'Untitled'} — ${getContentTypeLabel(doc.type)}`,
+            })),
+        ]);
+        setTaskIcons(icons);
+      } catch (error) {
+        console.error('Error loading task configuration data:', error);
+      }
+    };
+
+    loadTaskConfigurationData();
+  }, [contentId]);
+
   // Load data when component mounts or journeyData changes
   useEffect(() => {
     const loadContentData = async () => {
@@ -133,7 +271,7 @@ export const Journey40Day = () => {
               const dayValue = contentDoc.day !== undefined ? contentDoc.day : '';
               setDay(dayValue);
               setOriginalDay(dayValue);
-              const docTasks = contentDoc.tasks && contentDoc.tasks.length > 0 ? contentDoc.tasks : [''];
+              const docTasks = parseTasks(contentDoc.tasks);
               setTasks(docTasks);
               setOriginalTasks(contentDoc.tasks ? [...contentDoc.tasks] : []);
             }
@@ -153,10 +291,10 @@ export const Journey40Day = () => {
         setOriginalDay(dayValue);
         
         if (journeyData.tasks && journeyData.tasks.length > 0) {
-          setTasks(journeyData.tasks);
+          setTasks(parseTasks(journeyData.tasks));
           setOriginalTasks([...journeyData.tasks]);
         } else {
-          setTasks(['']);
+          setTasks([createEmptyTask()]);
           setOriginalTasks([]);
         }
       }
@@ -165,20 +303,67 @@ export const Journey40Day = () => {
     loadContentData();
   }, [journeyData, originalContentData, contentId]);
 
-  const handleTaskChange = (index: number, value: string) => {
-    const newTasks = [...tasks];
-    newTasks[index] = value;
-    setTasks(newTasks);
+  const handleTaskChange = (index: number, updates: Partial<JourneyTaskForm>) => {
+    setTasks((prev) =>
+      prev.map((task, taskIndex) => {
+        if (taskIndex !== index) return task;
+        const nextTask = { ...task, ...updates };
+
+        if (updates.taskType === 'standard') {
+          nextTask.contentId = '';
+        }
+
+        return nextTask;
+      })
+    );
   };
 
   const handleAddTask = () => {
-    setTasks([...tasks, '']);
+    setTasks([...tasks, createEmptyTask()]);
   };
 
   const handleRemoveTask = (index: number) => {
     if (tasks.length > 1) {
       const newTasks = tasks.filter((_, i) => i !== index);
       setTasks(newTasks);
+    }
+  };
+
+  const handleTaskIconUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+
+    if (!file) return;
+
+    setIsUploadingTaskIcon(true);
+    try {
+      const icon = await uploadTaskIcon(file);
+      setTaskIcons((prev) =>
+        [...prev.filter((item) => item.id !== icon.id), icon].sort((a, b) =>
+          a.name.localeCompare(b.name)
+        )
+      );
+    } catch (error) {
+      console.error('Error uploading task icon:', error);
+    } finally {
+      setIsUploadingTaskIcon(false);
+    }
+  };
+
+  const handleDeleteTaskIcon = async (iconId: string) => {
+    setIsDeletingTaskIcon(true);
+    try {
+      await deleteTaskIcon(iconId);
+      setTaskIcons((prev) => prev.filter((icon) => icon.id !== iconId));
+      setTasks((prev) =>
+        prev.map((task) =>
+          task.icon.includes(`/files/${iconId}/`) ? { ...task, icon: '' } : task
+        )
+      );
+    } catch (error) {
+      console.error('Error deleting task icon:', error);
+    } finally {
+      setIsDeletingTaskIcon(false);
     }
   };
 
@@ -212,7 +397,12 @@ export const Journey40Day = () => {
     
     const titleChanged = contentTitle.trim() !== originalTitle.trim();
     const dayChanged = day !== originalDay;
-    const tasksChanged = JSON.stringify(tasks.filter(t => t.trim())) !== JSON.stringify(originalTasks.filter(t => t.trim()));
+    const serializedTasks = tasks
+      .filter((task) => task.title.trim().length > 0)
+      .map(serializeTask);
+    const tasksChanged =
+      JSON.stringify(serializedTasks) !==
+      JSON.stringify(originalTasks.filter((task) => task.trim()));
     
     // Check if new files were uploaded
     const newAudioUploaded = uploadedAudioFiles.length > 0;
@@ -252,8 +442,15 @@ export const Journey40Day = () => {
       return;
     }
 
+    if (getInvalidNavigationTask()) {
+      showAppwriteError(new Error('Navigation tasks must have linked content selected.'));
+      return;
+    }
+
     // Filter out empty tasks
-    const validTasks = tasks.filter((task) => task.trim().length > 0);
+    const validTasks = tasks
+      .filter((task) => task.title.trim().length > 0)
+      .map(serializeTask);
 
     setIsSaving(true);
     setSaveProgress(0);
@@ -295,7 +492,7 @@ export const Journey40Day = () => {
       // Update original values after successful save
       setOriginalTitle(contentTitle);
       setOriginalDay(day);
-      setOriginalTasks([...tasks]);
+      setOriginalTasks([...validTasks]);
       // Clear newly uploaded files (keep URLs)
       setUploadedAudioFiles([]);
       
@@ -328,7 +525,9 @@ export const Journey40Day = () => {
     }
 
     // Filter out empty tasks
-    const validTasks = tasks.filter((task) => task.trim().length > 0);
+    const validTasks = tasks
+      .filter((task) => task.title.trim().length > 0)
+      .map(serializeTask);
 
     // Warn if no tasks are provided (but allow publishing)
     if (validTasks.length === 0) {
@@ -336,6 +535,11 @@ export const Journey40Day = () => {
     }
 
     if (dayBlocksSubmit) {
+      return;
+    }
+
+    if (getInvalidNavigationTask()) {
+      showAppwriteError(new Error('Navigation tasks must have linked content selected.'));
       return;
     }
 
@@ -585,43 +789,158 @@ export const Journey40Day = () => {
               Input user tasks below:
             </h3>
 
+            <input
+              ref={iconInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleTaskIconUpload}
+              className="sr-only"
+            />
+
             {/* Task Inputs */}
             {tasks.map((task, index) => (
-              <div key={index} className="flex gap-2 items-end">
-                <div className="flex-1 flex flex-col gap-2">
-                  <label className="text-white text-[14px] leading-[20px] font-roboto font-normal">
-                    Task {index + 1}
-                  </label>
-                  <input
-                    type="text"
-                    value={task}
-                    onChange={(e) => handleTaskChange(index, e.target.value)}
-                    placeholder={
-                      index === 0
-                        ? 'Day 2 Check-in'
-                        : index === 1
-                        ? 'Read a Book'
-                        : index === 2
-                        ? 'You should listen to this'
-                        : 'Exercise'
-                    }
-                    disabled={isEditMode ? !isEditing : false}
-                    className="h-[56px] bg-[#131313] border border-[rgba(255,255,255,0.25)] rounded-[16px] px-4 font-lato text-[16px] leading-[24px] text-white placeholder:text-[#616161] focus:outline-none focus:ring-2 focus:ring-[#965cdf]"
-                  />
+              <div
+                key={task.id}
+                className="flex flex-col gap-4 rounded-[16px] border border-[rgba(255,255,255,0.15)] bg-[rgba(255,255,255,0.04)] p-4"
+              >
+                <div className="flex items-start gap-2">
+                  <div className="flex flex-1 flex-col gap-2">
+                    <label className="text-white text-[14px] leading-[20px] font-roboto font-normal">
+                      Task {index + 1}
+                    </label>
+                    <input
+                      type="text"
+                      value={task.title}
+                      onChange={(e) => handleTaskChange(index, { title: e.target.value })}
+                      placeholder={
+                        index === 0
+                          ? 'Day 2 Check-in'
+                          : index === 1
+                          ? 'Read a Book'
+                          : index === 2
+                          ? 'You should listen to this'
+                          : 'Exercise'
+                      }
+                      disabled={isEditMode ? !isEditing : false}
+                      className="h-[56px] bg-[#131313] border border-[rgba(255,255,255,0.25)] rounded-[16px] px-4 font-lato text-[16px] leading-[24px] text-white placeholder:text-[#616161] focus:outline-none focus:ring-2 focus:ring-[#965cdf] disabled:opacity-60 disabled:cursor-not-allowed"
+                    />
+                  </div>
+                  {tasks.length > 1 && (
+                    <button
+                      onClick={() => handleRemoveTask(index)}
+                      className="mt-8 p-2 cursor-pointer hover:opacity-80 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                      type="button"
+                      aria-label="Remove task"
+                      disabled={isEditMode ? !isEditing : false}
+                    >
+                      <CloseIcon width={20} height={20} color="#8f8f8f" />
+                    </button>
+                  )}
                 </div>
-                {tasks.length > 1 && (
-                  <button
-                    onClick={() => handleRemoveTask(index)}
-                    className="mb-2 p-2 cursor-pointer hover:opacity-80 transition disabled:opacity-50 disabled:cursor-not-allowed"
-                    type="button"
-                    aria-label="Remove task"
-                    disabled={isEditMode ? !isEditing : false}
-                  >
-                    <CloseIcon width={20} height={20} color="#8f8f8f" />
-                  </button>
+
+                <div className="flex flex-col gap-2">
+                  <label className="text-white text-[14px] leading-[20px] font-roboto font-normal">
+                    Task Type
+                  </label>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    {(['standard', 'navigation'] as JourneyTaskType[]).map((taskType) => {
+                      const isSelected = task.taskType === taskType;
+                      return (
+                        <button
+                          key={taskType}
+                          type="button"
+                          onClick={() => handleTaskChange(index, { taskType })}
+                          disabled={isEditMode ? !isEditing : false}
+                          className={`h-[52px] rounded-[14px] border px-3 font-roboto text-[15px] font-medium transition disabled:opacity-60 disabled:cursor-not-allowed ${
+                            isSelected
+                              ? 'border-[#965cdf] bg-[rgba(150,92,223,0.22)] text-white'
+                              : 'border-[rgba(255,255,255,0.25)] bg-[#131313] text-[#c8c8c8] hover:bg-gray-800'
+                          }`}
+                        >
+                          {taskType === 'standard' ? 'Standard Task' : 'Navigation Task'}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {task.taskType === 'navigation' && (
+                  <div className="flex flex-col gap-2">
+                    <label className="text-white text-[14px] leading-[20px] font-roboto font-normal">
+                      Linked Content
+                    </label>
+                    <Select
+                      options={contentOptions}
+                      value={task.contentId}
+                      onChange={(value) => handleTaskChange(index, { contentId: value })}
+                      placeholder="Select content to navigate to..."
+                      className={isEditMode && !isEditing ? 'pointer-events-none opacity-60' : ''}
+                    />
+                  </div>
                 )}
+
+                <div className="flex flex-col gap-2">
+                  <label className="text-white text-[14px] leading-[20px] font-roboto font-normal">
+                    Task Icon
+                  </label>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                    <div className="flex min-w-0 flex-1 items-center gap-3">
+                      <div className="flex h-[56px] w-[56px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] border border-[rgba(255,255,255,0.18)] bg-[#131313]">
+                        {task.icon ? (
+                          <img src={task.icon} alt="" className="h-full w-full object-cover" />
+                        ) : (
+                          <span className="text-[11px] text-[#8f8f8f]">Default</span>
+                        )}
+                      </div>
+                      <Select
+                        options={iconOptions}
+                        value={task.icon}
+                        onChange={(value) => handleTaskChange(index, { icon: value })}
+                        placeholder="Default task icon"
+                        className={`min-w-0 flex-1 ${
+                          isEditMode && !isEditing ? 'pointer-events-none opacity-60' : ''
+                        }`}
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => iconInputRef.current?.click()}
+                        disabled={isUploadingTaskIcon || (isEditMode ? !isEditing : false)}
+                        className="h-[44px] rounded-[12px] border border-[#965cdf] px-3 text-[#965cdf] font-roboto text-[14px] font-medium hover:bg-[rgba(150,92,223,0.1)] transition disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {isUploadingTaskIcon ? 'Uploading...' : 'Upload Icon'}
+                      </button>
+                      {task.icon && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const selectedIcon = taskIcons.find((icon) => icon.url === task.icon);
+                            if (selectedIcon) {
+                              handleDeleteTaskIcon(selectedIcon.id);
+                            }
+                          }}
+                          disabled={
+                            isDeletingTaskIcon ||
+                            !taskIcons.some((icon) => icon.url === task.icon) ||
+                            (isEditMode ? !isEditing : false)
+                          }
+                          className="h-[44px] rounded-[12px] border border-[rgba(255,255,255,0.25)] px-3 text-white font-roboto text-[14px] font-medium hover:bg-gray-800 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Delete
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </div>
             ))}
+
+            {tasks.some((task) => task.taskType === 'navigation' && task.title.trim() && !task.contentId) && (
+              <p className="text-[13px] leading-[20px] text-red-400 font-roboto" role="alert">
+                Navigation tasks need linked content before publishing.
+              </p>
+            )}
 
             {/* Add Task Button */}
             <button

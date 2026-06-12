@@ -9,6 +9,7 @@ import {
   Alert,
   RefreshControl,
   Dimensions,
+  useWindowDimensions,
 } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -18,6 +19,7 @@ import {
   useImage,
 } from '@shopify/react-native-skia';
 import ChevronLeftIcon from '../../assets/icons/chevron-left';
+import AccountIcon from '../../assets/icons/account';
 import TrashIcon from '../../assets/icons/trash';
 import { invitationService, Invitation } from '../../services/invitation.service';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
@@ -25,18 +27,26 @@ import { ConfirmationModal } from '../../components/ConfirmationModal';
 import { ScreenNames } from '../../constants/ScreenNames';
 import { showAppwriteError, showSuccessNotification } from '../../services/notifications';
 import { useAppNavigation } from '../../hooks/useAppNavigation';
+import { useSharedAccessStore } from '../../store/sharedAccessStore';
 
 interface InvitedUserItemProps {
   invitation: Invitation;
-  onDelete: () => void;
+  onRevoke: () => void;
   onResend: () => void;
 }
 
-const InvitedUserItem: React.FC<InvitedUserItemProps> = ({ invitation, onDelete, onResend }) => {
+const InvitedUserItem: React.FC<InvitedUserItemProps> = ({ invitation, onRevoke, onResend }) => {
+  const { width } = useWindowDimensions();
+  const emailFontSize = width < 360 ? 13 : 14;
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'accepted':
         return '#10B981'; // green
+      case 'upgraded':
+        return '#3B82F6'; // blue
+      case 'revoked':
+        return '#6B7280'; // gray
       case 'expired':
         return '#EF4444'; // red
       default:
@@ -48,6 +58,10 @@ const InvitedUserItem: React.FC<InvitedUserItemProps> = ({ invitation, onDelete,
     switch (status) {
       case 'accepted':
         return 'Accepted';
+      case 'upgraded':
+        return 'Upgraded to own subscription';
+      case 'revoked':
+        return 'Revoked';
       case 'expired':
         return 'Expired';
       default:
@@ -58,7 +72,13 @@ const InvitedUserItem: React.FC<InvitedUserItemProps> = ({ invitation, onDelete,
   return (
     <View style={styles.userItem}>
       <View style={styles.userInfo}>
-        <Text style={styles.userEmail}>{invitation.email}</Text>
+        <Text
+          style={[styles.userEmail, { fontSize: emailFontSize }]}
+          numberOfLines={1}
+          ellipsizeMode="middle"
+        >
+          {invitation.email}
+        </Text>
         <View style={[styles.statusBadge, { backgroundColor: getStatusColor(invitation.status) }]}>
           <Text style={styles.statusText}>{getStatusText(invitation.status)}</Text>
         </View>
@@ -73,13 +93,15 @@ const InvitedUserItem: React.FC<InvitedUserItemProps> = ({ invitation, onDelete,
             <Text style={styles.resendButtonText}>Resend</Text>
           </TouchableOpacity>
         )}
-        <TouchableOpacity
-          onPress={onDelete}
-          style={styles.deleteButton}
-          activeOpacity={0.7}
-        >
-          <TrashIcon width={20} height={20} color="#ffffff" />
-        </TouchableOpacity>
+        {(invitation.status === 'pending' || invitation.status === 'accepted') && (
+          <TouchableOpacity
+            onPress={onRevoke}
+            style={styles.deleteButton}
+            activeOpacity={0.7}
+          >
+            <TrashIcon width={20} height={20} color="#ffffff" />
+          </TouchableOpacity>
+        )}
       </View>
     </View>
   );
@@ -87,13 +109,15 @@ const InvitedUserItem: React.FC<InvitedUserItemProps> = ({ invitation, onDelete,
 
 export const ManageInvites: React.FC = () => {
   const navigation = useNavigation();
-  const { navigateToInviteSend } = useAppNavigation();
+  const { navigateToInviteSend, navigateToSubscription } = useAppNavigation();
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [invitationToDelete, setInvitationToDelete] = useState<Invitation | null>(null);
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [invitationToRevoke, setInvitationToRevoke] = useState<Invitation | null>(null);
+  const [showRevokeModal, setShowRevokeModal] = useState(false);
+  const isSharedAccessActive = useSharedAccessStore((s) => s.isSharedAccessActive);
+  const isSharedAccessLoading = useSharedAccessStore((s) => s.isLoading);
+  const refreshSharedAccess = useSharedAccessStore((s) => s.refreshSharedAccess);
 
   const MAX_INVITES = 2;
   const width = Dimensions.get('window').width;
@@ -101,8 +125,9 @@ export const ManageInvites: React.FC = () => {
 
   useFocusEffect(
     React.useCallback(() => {
+      refreshSharedAccess();
       loadInvitations();
-    }, [])
+    }, [refreshSharedAccess])
   );
 
   const loadInvitations = async () => {
@@ -123,41 +148,40 @@ export const ManageInvites: React.FC = () => {
     loadInvitations();
   };
 
-  const handleDeleteInvitation = (invitation: Invitation) => {
-    setInvitationToDelete(invitation);
-    setShowDeleteModal(true);
+  const activeInvitations = invitations.filter(inv => invitationService.isActiveInvite(inv.status));
+  const activeInviteCount = activeInvitations.length;
+  const canInviteMore = activeInviteCount < MAX_INVITES;
+
+  const handleRevokeInvitation = (invitation: Invitation) => {
+    setInvitationToRevoke(invitation);
+    setShowRevokeModal(true);
   };
 
-  const confirmDeleteInvitation = async () => {
-    if (!invitationToDelete) return;
+  const confirmRevokeInvitation = async () => {
+    if (!invitationToRevoke) return;
     
     try {
-      setDeletingId(invitationToDelete.$id || null);
-      if (invitationToDelete.$id) {
-        await invitationService.deleteInvitation(invitationToDelete.$id);
-        showSuccessNotification('Invitation removed successfully');
+      if (invitationToRevoke.$id) {
+        await invitationService.revokeInvitation(invitationToRevoke.$id);
+        showSuccessNotification('Shared access removed successfully');
         loadInvitations();
       }
     } catch (error: unknown) {
       showAppwriteError(error, { skipUnauthorized: true });
     } finally {
-      setDeletingId(null);
-      setInvitationToDelete(null);
-      setShowDeleteModal(false);
+      setInvitationToRevoke(null);
+      setShowRevokeModal(false);
     }
   };
 
-  const cancelDeleteInvitation = () => {
-    setInvitationToDelete(null);
-    setShowDeleteModal(false);
+  const cancelRevokeInvitation = () => {
+    setInvitationToRevoke(null);
+    setShowRevokeModal(false);
   };
 
   const handleResendInvitation = async (invitation: Invitation) => {
     try {
-      await invitationService.createInvitation({
-        email: invitation.email,
-        inviterProfileId: invitation.inviterProfileId,
-      });
+      await invitationService.resendInvitation(invitation);
       
       loadInvitations();
     } catch (error: unknown) {
@@ -166,11 +190,10 @@ export const ManageInvites: React.FC = () => {
   };
 
   const handleInviteFriend = () => {
-    const pendingInvitations = invitations.filter(inv => inv.status === 'pending');
-    if (pendingInvitations.length >= MAX_INVITES) {
+    if (!canInviteMore) {
       Alert.alert(
         'Invite Limit Reached',
-        `You can only have up to ${MAX_INVITES} pending invitations. Please wait for some to be accepted or remove existing ones.`
+        `You can only have up to ${MAX_INVITES} active invites. Remove an active invite or wait for someone to get their own subscription.`
       );
     } else {
       navigateToInviteSend({ fromManageInvites: true });
@@ -200,7 +223,7 @@ export const ManageInvites: React.FC = () => {
           <View style={styles.headerSpacer} />
         </View>
 
-        {isLoading ? (
+        {isLoading || isSharedAccessLoading ? (
           <View style={styles.loadingContainer}>
             <LoadingSpinner />
             <Text style={styles.loadingText}>Loading invitations...</Text>
@@ -221,59 +244,88 @@ export const ManageInvites: React.FC = () => {
           >
             <View style={styles.titleContainer}>
               <Text style={styles.pageTitle}>Your Invites</Text>
-              <TouchableOpacity
-                onPress={handleInviteFriend}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.inviteLink}>Invite a friend</Text>
-              </TouchableOpacity>
-            </View>
-
-            <Text style={styles.infoText}>
-              You can have up to {MAX_INVITES} pending invitations at a time.
-            </Text>
-
-            <View style={styles.usersList}>
-              {invitations.map((invitation) => (
-                <InvitedUserItem
-                  key={invitation.$id || invitation.invitationToken}
-                  invitation={invitation}
-                  onDelete={() => handleDeleteInvitation(invitation)}
-                  onResend={() => handleResendInvitation(invitation)}
-                />
-              ))}
-            </View>
-
-            {invitations.length === 0 && (
-              <View style={styles.emptyState}>
-                <Text style={styles.emptyStateText}>
-                  You haven't invited anyone yet.
-                </Text>
+              {!isSharedAccessActive && (
                 <TouchableOpacity
                   onPress={handleInviteFriend}
-                  style={styles.emptyStateButton}
+                  disabled={!canInviteMore}
                   activeOpacity={0.7}
                 >
-                  <Text style={styles.emptyStateButtonText}>Invite a Friend</Text>
+                  <Text style={[styles.inviteLink, !canInviteMore && styles.inviteLinkDisabled]}>
+                    Invite a Loved One
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {isSharedAccessActive ? (
+              <View style={styles.sharedAccessCard}>
+                <Text style={styles.sharedAccessTitle}>Create Your Own Support Circle</Text>
+                <Text style={styles.sharedAccessText}>
+                  You're currently using Nevermore through another member's subscription.
+                </Text>
+                <Text style={styles.sharedAccessText}>
+                  To invite your own loved ones, you'll need your own Nevermore subscription.
+                </Text>
+                <TouchableOpacity
+                  onPress={navigateToSubscription}
+                  style={styles.subscriptionButton}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.subscriptionButtonText}>Get Subscription</Text>
                 </TouchableOpacity>
               </View>
+            ) : (
+              <>
+                <Text style={styles.infoText}>Build a circle of those you trust, one connection at a time.</Text>
+
+                <View style={styles.inviteLimitContainer}>
+                  <AccountIcon width={22} height={22} color="#8B5CF6" />
+                  <Text style={styles.inviteLimitText}>{activeInviteCount}/{MAX_INVITES} invites used.</Text>
+                </View>
+
+                <View style={styles.usersList}>
+                  {invitations.map((invitation) => (
+                    <InvitedUserItem
+                      key={invitation.$id || invitation.invitationToken}
+                      invitation={invitation}
+                      onRevoke={() => handleRevokeInvitation(invitation)}
+                      onResend={() => handleResendInvitation(invitation)}
+                    />
+                  ))}
+                </View>
+
+                {invitations.length === 0 && (
+                  <View style={styles.emptyState}>
+                    <Text style={styles.emptyStateText}>
+                      You haven't invited a loved one yet.
+                    </Text>
+                    <TouchableOpacity
+                      onPress={handleInviteFriend}
+                      style={styles.emptyStateButton}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.emptyStateButtonText}>Invite a Loved One</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </>
             )}
           </ScrollView>
         )}
       </SafeAreaView>
 
       <ConfirmationModal
-        visible={showDeleteModal}
+        visible={showRevokeModal}
         title={
-          invitationToDelete
-            ? `Are you sure you want to remove the invitation for ${invitationToDelete.email}?`
-            : 'Are you sure you want to remove this invitation?'
+          invitationToRevoke
+            ? `Remove shared access for ${invitationToRevoke.email}?`
+            : 'Remove this shared access?'
         }
-        description="If you remove this invitation, you will need to send a new one to invite this person again."
-        cancelText="Keep Invitation"
-        confirmText="Remove Invitation"
-        onCancel={cancelDeleteInvitation}
-        onConfirm={confirmDeleteInvitation}
+        description="Their current invite link will stop working. If they already accepted the invite, they will need their own subscription to continue after losing shared access."
+        cancelText="Keep Access"
+        confirmText="Remove Access"
+        onCancel={cancelRevokeInvitation}
+        onConfirm={confirmRevokeInvitation}
         confirmButtonColor="#EF4444"
       />
     </View>
@@ -345,11 +397,70 @@ const styles = StyleSheet.create({
     color: '#8B5CF6',
     fontFamily: 'Roboto_500Medium',
   },
+  inviteLinkDisabled: {
+    color: 'rgba(139, 92, 246, 0.45)',
+  },
   infoText: {
     fontSize: 14,
     color: 'rgba(255, 255, 255, 0.7)',
-    marginBottom: 32,
+    marginBottom: 18,
     fontFamily: 'Roboto_400Regular',
+    lineHeight: 20,
+  },
+  inviteLimitContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderColor: 'rgba(139, 92, 246, 0.32)',
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 32,
+  },
+  inviteLimitText: {
+    flex: 1,
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.78)',
+    marginLeft: 10,
+    fontFamily: 'Roboto_400Regular',
+    lineHeight: 20,
+  },
+  sharedAccessCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    borderColor: 'rgba(139, 92, 246, 0.35)',
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingHorizontal: 20,
+    paddingVertical: 24,
+    marginTop: 8,
+  },
+  sharedAccessTitle: {
+    fontSize: 22,
+    color: '#ffffff',
+    fontFamily: 'Cinzel_600SemiBold',
+    lineHeight: 30,
+    marginBottom: 18,
+  },
+  sharedAccessText: {
+    fontSize: 15,
+    color: 'rgba(255, 255, 255, 0.78)',
+    fontFamily: 'Roboto_400Regular',
+    lineHeight: 22,
+    marginBottom: 14,
+  },
+  subscriptionButton: {
+    backgroundColor: '#8B5CF6',
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    marginTop: 10,
+  },
+  subscriptionButtonText: {
+    fontSize: 16,
+    color: '#ffffff',
+    fontFamily: 'Roboto_600SemiBold',
   },
   usersList: {
     gap: 16,
@@ -378,13 +489,14 @@ const styles = StyleSheet.create({
   },
   userInfo: {
     flex: 1,
+    minWidth: 0,
     marginRight: 12,
   },
   userEmail: {
-    fontSize: 16,
     color: '#ffffff',
     fontFamily: 'Roboto_400Regular',
     marginBottom: 8,
+    lineHeight: 20,
   },
   statusBadge: {
     alignSelf: 'flex-start',
@@ -401,6 +513,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    flexShrink: 0,
   },
   resendButton: {
     paddingHorizontal: 12,

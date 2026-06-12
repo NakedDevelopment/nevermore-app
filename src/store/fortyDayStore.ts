@@ -35,6 +35,7 @@ export interface DayData {
 interface FortyDayState {
   currentDay: number;
   days: DayData[];
+  completedTasks: Record<string, boolean>;
   loading: boolean;
   error: string | null;
   setCurrentDay: (day: number) => void;
@@ -85,11 +86,14 @@ const convertContentToTasks = (content: Content): Task[] => {
   return tasks;
 };
 
+const getTaskStorageKey = (day: number, taskId: string) => `day-${day}-task-${taskId}`;
+
 export const useFortyDayStore = create<FortyDayState>()(
   persist(
     (set, get) => ({
       currentDay: 1,
       days: [],
+      completedTasks: {},
       loading: false,
       error: null,
       
@@ -100,17 +104,32 @@ export const useFortyDayStore = create<FortyDayState>()(
       },
 
       setDays: (days: DayData[]) => {
-        set({ days });
+        set((state) => {
+          const completedTasks = { ...(state.completedTasks || {}) };
+          days.forEach((day) => {
+            day.tasks.forEach((task) => {
+              const taskKey = getTaskStorageKey(day.day, task.id);
+              if (task.completed) {
+                completedTasks[taskKey] = true;
+              } else if (!(taskKey in completedTasks)) {
+                completedTasks[taskKey] = false;
+              }
+            });
+          });
+          return { days, completedTasks };
+        });
       },
 
       getCompletedTasks: () => {
         const state = get();
-        const completedTasks: Record<string, boolean> = {};
+        const completedTasks: Record<string, boolean> = {
+          ...((state as any).completedTasks || {}),
+        };
         
         state.days.forEach((day) => {
           day.tasks.forEach((task) => {
             if (task.completed) {
-              const taskKey = `day-${day.day}-task-${task.id}`;
+              const taskKey = getTaskStorageKey(day.day, task.id);
               completedTasks[taskKey] = true;
             }
           });
@@ -120,15 +139,23 @@ export const useFortyDayStore = create<FortyDayState>()(
       },
       
       toggleTask: (day: number, taskId: string) => {
-        set((state) => ({
-          days: state.days.map((d) => {
+        set((state) => {
+          const completedTaskMap = { ...(state.completedTasks || {}) };
+          const days = state.days.map((d) => {
             if (d.day === day) {
               const updatedTasks = d.tasks.map((task) =>
                 task.id === taskId ? { ...task, completed: !task.completed } : task
               );
-              const completedTasks = updatedTasks.filter(task => task.completed).length;
+              const toggledTask = updatedTasks.find((task) => task.id === taskId);
+              const taskKey = getTaskStorageKey(day, taskId);
+              if (toggledTask?.completed) {
+                completedTaskMap[taskKey] = true;
+              } else {
+                delete completedTaskMap[taskKey];
+              }
+              const completedTaskCount = updatedTasks.filter(task => task.completed).length;
               const completionPercentage = updatedTasks.length > 0 
-                ? Math.round((completedTasks / updatedTasks.length) * 100)
+                ? Math.round((completedTaskCount / updatedTasks.length) * 100)
                 : 0;
               
               return {
@@ -138,14 +165,17 @@ export const useFortyDayStore = create<FortyDayState>()(
               };
             }
             return d;
-          }),
-        }));
+          });
+
+          return { days, completedTasks: completedTaskMap };
+        });
       },
       
       resetProgress: () => {
         set({
           currentDay: 1,
           days: [],
+          completedTasks: {},
           error: null,
         });
         get().loadFortyDayContent();
@@ -155,13 +185,15 @@ export const useFortyDayStore = create<FortyDayState>()(
         set({
           currentDay: 1,
           days: [],
+          completedTasks: {},
           error: null,
         });
       },
 
       loadFortyDayContent: async () => {
         console.log('loadFortyDayContent called - fetching from Appwrite...');
-        set({ loading: true, error: null, days: [] });
+        const existingCompletedTasks = get().getCompletedTasks();
+        set({ loading: true, error: null });
         
         try {
           const fortyDayContent = await contentService.getFortyDayContent();
@@ -187,9 +219,6 @@ export const useFortyDayStore = create<FortyDayState>()(
             return (a.title || '').localeCompare(b.title || '');
           });
           
-          const currentState = get();
-          const existingCompletedTasks = currentState.getCompletedTasks();
-          
           const days: DayData[] = sortedContent.map((content, index) => {
             const dayNumber = content.day !== undefined && content.day !== null 
               ? Number(content.day) 
@@ -198,7 +227,7 @@ export const useFortyDayStore = create<FortyDayState>()(
             const tasks = convertContentToTasks(content);
             
             tasks.forEach((task) => {
-              const taskKey = `day-${dayNumber}-task-${task.id}`;
+              const taskKey = getTaskStorageKey(dayNumber, task.id);
               if (existingCompletedTasks[taskKey]) {
                 task.completed = true;
               }
@@ -236,6 +265,7 @@ export const useFortyDayStore = create<FortyDayState>()(
           
           set({ 
             days, 
+            completedTasks: existingCompletedTasks,
             loading: false,
             error: null,
           });
@@ -257,6 +287,10 @@ export const useFortyDayStore = create<FortyDayState>()(
     {
       name: 'forty-day-storage',
       storage: createJSONStorage(() => AsyncStorage),
+      partialize: (state) => ({
+        currentDay: state.currentDay,
+        completedTasks: state.completedTasks,
+      }),
     }
   )
 );

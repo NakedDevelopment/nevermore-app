@@ -40,6 +40,10 @@ interface AudioPlayerContextValue {
   fortyday: AudioChannel;
 }
 
+type InternalAudioChannel = AudioChannel & {
+  pauseFromCoordinator: () => void;
+};
+
 const AudioPlayerContext = createContext<AudioPlayerContextValue | null>(null);
 
 const formatTime = (milliseconds: number): string => {
@@ -52,6 +56,18 @@ const formatTime = (milliseconds: number): string => {
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 };
 
+const isPlayerAtEnd = (player: AudioPlayer): boolean => {
+  try {
+    return (
+      isFinite(player.duration) &&
+      player.duration > 0 &&
+      player.currentTime >= player.duration - 0.25
+    );
+  } catch {
+    return false;
+  }
+};
+
 /**
  * Builds an audio channel backed by a persistent expo-audio player instance.
  * The player lives for the lifetime of the provider (mounted above navigation),
@@ -62,7 +78,7 @@ const formatTime = (milliseconds: number): string => {
 function useAudioChannel(
   player: AudioPlayer,
   onPlayStart: () => void
-): AudioChannel {
+): InternalAudioChannel {
   const [isLoading, setIsLoading] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
@@ -88,6 +104,10 @@ function useAudioChannel(
           setCurrentTime(formatTime(currentTimeMs));
           setTotalTime(isFinite(player.duration) && player.duration > 0 ? formatTime(durationMs) : '--:--');
           setProgress(player.duration > 0 && isFinite(player.duration) ? player.currentTime / player.duration : 0);
+          if (isPlayerAtEnd(player) && !player.playing) {
+            setIsPlaying(false);
+            setProgress(1);
+          }
         } catch {
           // native player already released
         }
@@ -170,6 +190,11 @@ function useAudioChannel(
       // If same audio is already loaded, just play it
       if (currentUri === uri) {
         if (!player.playing) {
+          if (isPlayerAtEnd(player)) {
+            await player.seekTo(0);
+            setCurrentTime('00:00');
+            setProgress(0);
+          }
           onPlayStart();
           await player.play();
           setIsPlaying(true);
@@ -257,6 +282,11 @@ function useAudioChannel(
       }
 
       if (!player.playing) {
+        if (isPlayerAtEnd(player)) {
+          await player.seekTo(0);
+          setCurrentTime('00:00');
+          setProgress(0);
+        }
         onPlayStart();
         await player.play();
         setIsPlaying(true);
@@ -279,6 +309,13 @@ function useAudioChannel(
     } catch (error) {
     }
   };
+
+  const pauseFromCoordinator = useCallback(() => {
+    try {
+      player.pause();
+    } catch {}
+    setIsPlaying(false);
+  }, [player]);
 
   const stop = async () => {
     try {
@@ -412,6 +449,7 @@ function useAudioChannel(
     loadAndPlay,
     unloadAudio,
     getPlaybackSnapshot,
+    pauseFromCoordinator,
   };
 }
 
@@ -421,6 +459,7 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
   const mainPlayer = useExpoAudioPlayer();
   const reflectionPlayer = useExpoAudioPlayer();
   const fortydayPlayer = useExpoAudioPlayer();
+  const channelsRef = useRef<Partial<Record<ChannelName, InternalAudioChannel>>>({});
 
   // Configure the audio session once so playback continues when the app is
   // backgrounded or the device is locked (and iOS surfaces lock-screen
@@ -439,20 +478,15 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
   // Pause the other channels' native players so only one stream is audible
   // at a time, mirroring the in-screen behavior but enforced globally.
   const pauseOthers = useCallback((keep: ChannelName) => {
-    try {
-      if (keep !== 'main' && mainPlayer.playing) mainPlayer.pause();
-    } catch {}
-    try {
-      if (keep !== 'reflection' && reflectionPlayer.playing) reflectionPlayer.pause();
-    } catch {}
-    try {
-      if (keep !== 'fortyday' && fortydayPlayer.playing) fortydayPlayer.pause();
-    } catch {}
-  }, [mainPlayer, reflectionPlayer, fortydayPlayer]);
+    if (keep !== 'main') channelsRef.current.main?.pauseFromCoordinator();
+    if (keep !== 'reflection') channelsRef.current.reflection?.pauseFromCoordinator();
+    if (keep !== 'fortyday') channelsRef.current.fortyday?.pauseFromCoordinator();
+  }, []);
 
   const main = useAudioChannel(mainPlayer, useCallback(() => pauseOthers('main'), [pauseOthers]));
   const reflection = useAudioChannel(reflectionPlayer, useCallback(() => pauseOthers('reflection'), [pauseOthers]));
   const fortyday = useAudioChannel(fortydayPlayer, useCallback(() => pauseOthers('fortyday'), [pauseOthers]));
+  channelsRef.current = { main, reflection, fortyday };
 
   return (
     <AudioPlayerContext.Provider value={{ main, reflection, fortyday }}>

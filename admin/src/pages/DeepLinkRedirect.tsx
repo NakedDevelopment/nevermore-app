@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { getAppLinkSettings } from '../lib/settings';
-import type { AppLinkSettings } from '../lib/settings';
 import authBg from '../assets/images/auth-bg.png';
 
 type DeviceType = 'ios' | 'android' | 'desktop';
 type PageState = 'loading' | 'redirecting' | 'coming-soon' | 'desktop-only';
+const APP_SCHEME = 'nevermoreapp://';
 
 const detectDevice = (): DeviceType => {
   const userAgent = navigator.userAgent.toLowerCase();
@@ -22,11 +22,12 @@ const detectDevice = (): DeviceType => {
 export const DeepLinkRedirect = () => {
   const location = useLocation();
   const [pageState, setPageState] = useState<PageState>('loading');
-  const [settings, setSettings] = useState<AppLinkSettings | null>(null);
   const deviceType = detectDevice();
 
   // Get the path without leading slash (e.g., "reset-password" or "invitation")
   const path = location.pathname.slice(1);
+  const queryString = location.search;
+  const appDeepLink = `${APP_SCHEME}/${path}${queryString}`;
 
   useEffect(() => {
     const handleRedirect = async () => {
@@ -38,65 +39,47 @@ export const DeepLinkRedirect = () => {
 
       // Fetch settings
       const appSettings = await getAppLinkSettings();
-      setSettings(appSettings);
 
       // Check if we have the necessary links
       const storeUrl = deviceType === 'ios' ? appSettings.appStoreUrl : appSettings.playStoreUrl;
       
-      if (!appSettings.deepLinkUrl && !storeUrl) {
-        setPageState('coming-soon');
-        return;
-      }
-
       setPageState('redirecting');
 
       // Try to open the app via deep link
-      if (appSettings.deepLinkUrl) {
-        const deepLink = `${appSettings.deepLinkUrl}${path}`;
-        
-        // Create a hidden iframe to attempt opening the app
-        const iframe = document.createElement('iframe');
-        iframe.style.display = 'none';
-        iframe.src = deepLink;
-        document.body.appendChild(iframe);
+      // Create a hidden iframe to attempt opening the app
+      const iframe = document.createElement('iframe');
+      iframe.style.display = 'none';
+      iframe.src = appDeepLink;
+      document.body.appendChild(iframe);
 
-        // Set a timeout to redirect to store if app doesn't open
-        const timeout = setTimeout(() => {
+      // Set a timeout to redirect to store if app doesn't open
+      const timeout = setTimeout(() => {
+        if (document.body.contains(iframe)) {
           document.body.removeChild(iframe);
-          
-          if (storeUrl) {
-            window.location.href = storeUrl;
-          } else {
-            setPageState('coming-soon');
-          }
-        }, 2500);
+        }
 
-        // Also try window.location for some devices
-        setTimeout(() => {
-          window.location.href = deepLink;
-        }, 100);
+        if (storeUrl) {
+          window.location.href = storeUrl;
+        } else {
+          setPageState('coming-soon');
+        }
+      }, 2500);
 
-        // Clean up on successful app open (page will be hidden)
-        document.addEventListener('visibilitychange', () => {
-          if (document.hidden) {
-            clearTimeout(timeout);
-          }
-        });
-      } else if (storeUrl) {
-        // No deep link, go directly to store
-        window.location.href = storeUrl;
-      } else {
-        setPageState('coming-soon');
-      }
+      // Also try window.location for some devices
+      setTimeout(() => {
+        window.location.href = appDeepLink;
+      }, 100);
+
+      // Clean up on successful app open (page will be hidden)
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+          clearTimeout(timeout);
+        }
+      });
     };
 
     handleRedirect();
-  }, [deviceType, path]);
-
-  const getStoreUrl = () => {
-    if (!settings) return null;
-    return deviceType === 'ios' ? settings.appStoreUrl : settings.playStoreUrl;
-  };
+  }, [appDeepLink, deviceType, path, queryString]);
 
   return (
     <div
@@ -135,16 +118,14 @@ export const DeepLinkRedirect = () => {
                 Opening App...
               </h1>
               <p className="text-gray-400 mb-6">
-                If the app doesn't open automatically, you'll be redirected to the {deviceType === 'ios' ? 'App Store' : 'Play Store'}.
+                If the app doesn't open automatically, tap below to continue in Nevermore.
               </p>
-              {getStoreUrl() && (
-                <button
-                  onClick={() => window.location.href = getStoreUrl()!}
-                  className="inline-block bg-purple-500 hover:bg-purple-600 text-white px-6 py-3 rounded-lg transition-colors"
-                >
-                  Open {deviceType === 'ios' ? 'App Store' : 'Play Store'}
-                </button>
-              )}
+              <button
+                onClick={() => window.location.href = appDeepLink}
+                className="inline-block bg-purple-500 hover:bg-purple-600 text-white px-6 py-3 rounded-lg transition-colors"
+              >
+                Open Nevermore
+              </button>
             </>
           )}
 

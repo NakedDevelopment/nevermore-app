@@ -16,6 +16,7 @@ import {
   useImage
 } from '@shopify/react-native-skia';
 import ArrowLeftIcon from '../../assets/icons/arrow-left';
+import AccountIcon from '../../assets/icons/account';
 import PlusIcon from '../../assets/icons/plus';
 import { Button } from '../../components/Button';
 import { SecondaryButton } from '../../components/SecondaryButton';
@@ -26,6 +27,7 @@ import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { showAppwriteError, showSuccessNotification } from '../../services/notifications';
 import { useOnboardingStore } from '../../store/onboardingStore';
 import { useAuthStore } from '../../store/authStore';
+import { useSharedAccessStore } from '../../store/sharedAccessStore';
 import { getCurrentUser } from '../../services/auth.service';
 import { RootStackParamList } from '../../hooks/useAppNavigation';
 
@@ -45,8 +47,10 @@ export function InviteSend() {
   };
   const [emails, setEmails] = useState<string[]>(['']);
   const [isLoading, setIsLoading] = useState(false);
-  const { setCurrentStep } = useOnboardingStore();
+  const { setCurrentStep, completeOnboarding } = useOnboardingStore();
   const { checkAuth, isAuthenticated } = useAuthStore();
+  const isSharedAccessActive = useSharedAccessStore((s) => s.isSharedAccessActive);
+  const refreshSharedAccess = useSharedAccessStore((s) => s.refreshSharedAccess);
   
   const width = Dimensions.get('window').width;
   const bg = useImage(require('../../assets/gradient.png'));
@@ -54,7 +58,23 @@ export function InviteSend() {
   // Check authentication status when component mounts
   useEffect(() => {
     checkAuth();
-  }, []);
+    refreshSharedAccess();
+  }, [checkAuth, refreshSharedAccess]);
+
+  useEffect(() => {
+    if (!isSharedAccessActive) return;
+
+    if (fromManageInvites) {
+      navigation.replace(ScreenNames.MANAGE_INVITES);
+      return;
+    }
+
+    completeOnboarding();
+    navigation.reset({
+      index: 0,
+      routes: [{ name: ScreenNames.HOME_TABS }],
+    });
+  }, [completeOnboarding, fromManageInvites, isSharedAccessActive, navigation]);
 
   const handleEmailChange = (index: number, value: string) => {
     const newEmails = [...emails];
@@ -94,13 +114,13 @@ export function InviteSend() {
       return;
     }
 
-    // Ensure user is authenticated before sending invitations
+    // Ensure user is authenticated before sending invites
     try {
       const currentUser = await getCurrentUser();
       if (!currentUser) {
         Alert.alert(
           'Authentication Required',
-          'You must be signed in to send invitations. Please sign in and try again.',
+          'You must be signed in to send invites. Please sign in and try again.',
           [
             {
               text: 'OK',
@@ -134,8 +154,8 @@ export function InviteSend() {
       await Promise.all(invitationPromises);
 
       showSuccessNotification(
-          `Invitations sent successfully to ${validEmails.length} ${validEmails.length === 1 ? 'friend' : 'friends'}!`,
-          'Invitations Sent'
+          `Invite sent successfully to ${validEmails.length} ${validEmails.length === 1 ? 'loved one' : 'loved ones'}!`,
+          'Invites Sent'
       );
 
       if (fromManageInvites) {
@@ -147,7 +167,7 @@ export function InviteSend() {
     
     } catch (error: unknown) {
       showAppwriteError(error, {
-        title: 'Failed to Send Invitations',
+        title: 'Failed to Send Invites',
         skipUnauthorized: true,
       });
     } finally {
@@ -178,7 +198,7 @@ export function InviteSend() {
           <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
           <View style={styles.loadingContainer}>
             <LoadingSpinner />
-            <Text style={styles.loadingText}>Sending invitations...</Text>
+            <Text style={styles.loadingText}>Sending invites...</Text>
           </View>
         </SafeAreaView>
       </View>
@@ -204,8 +224,13 @@ export function InviteSend() {
 
           <View style={styles.content}>
             <Text style={styles.title}>
-              INVITE UP TO TWO (2) FRIENDS OR LOVED ONES TO JOIN YOU ON YOUR CHALLENGE.
+              BUILD A CIRCLE OF THOSE YOU TRUST, ONE CONNECTION AT A TIME.
             </Text>
+
+            <View style={styles.inviteLimitContainer}>
+              <AccountIcon width={22} height={22} color="#8B5CF6" />
+              <Text style={styles.inviteLimitText}>You can send up to 2 active invites.</Text>
+            </View>
             
             <View style={styles.emailSection}>
               {emails.map((email, index) => (
@@ -311,10 +336,29 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 18,
     color: '#ffffff',
-    marginBottom: 32,
+    marginBottom: 28,
     fontFamily: 'Cinzel_600SemiBold',
     textAlign: 'left',
-    lineHeight: 24,
+    lineHeight: 26,
+  },
+  inviteLimitContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderColor: 'rgba(139, 92, 246, 0.32)',
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 28,
+  },
+  inviteLimitText: {
+    flex: 1,
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.78)',
+    marginLeft: 10,
+    fontFamily: 'Roboto_400Regular',
+    lineHeight: 20,
   },
   emailSection: {
     flex: 1,

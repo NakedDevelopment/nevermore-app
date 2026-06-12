@@ -8,6 +8,8 @@ import {
   ScrollView,
   Dimensions,
   ImageBackground,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -20,11 +22,18 @@ import ArrowLeftIcon from '../../assets/icons/arrow-left';
 import CheckmarkIcon from '../../assets/icons/checkmark';
 import { Button } from '../../components/Button';
 import { ScreenNames } from '../../constants/ScreenNames';
+import { useSharedAccessStore } from '../../store/sharedAccessStore';
 import { useSubscriptionStore } from '../../store/subscriptionStore';
 import { useTrialStore } from '../../store/trialStore';
 import { getIAPProductIds } from '../../services/iap.service';
 
 type PlanType = 'monthly' | 'yearly';
+
+const DISPLAY_PRICES = {
+  monthly: '$13.99',
+  yearly: '$99',
+  yearlyPerMonth: '~$8.25/month',
+};
 
 export function Subscription() {
   const navigation = useNavigation<any>();
@@ -33,44 +42,31 @@ export function Subscription() {
   const bg = useImage(require('../../assets/gradient.png'));
   const {
     isSubscribed,
+    activePlan,
     isLoading,
     error,
-    products,
-    productsLoading,
     purchaseSubscription,
     restorePurchases,
+    getRestorePurchaseStatus,
+    checkSubscription,
     loadProducts,
     setError,
   } = useSubscriptionStore();
+  const isSharedAccessActive = useSharedAccessStore((s) => s.isSharedAccessActive);
+  const markSharedAccessUpgraded = useSharedAccessStore((s) => s.markSharedAccessUpgraded);
   const isTrialExpired = useTrialStore((s) => s.isTrialExpired);
+  const isUsingSharedSubscription = isSharedAccessActive;
+  const hasOwnSubscription = isSubscribed && !isSharedAccessActive;
+  const [hasCheckedSubscription, setHasCheckedSubscription] = useState(false);
 
   useEffect(() => {
     loadProducts();
-  }, [loadProducts]);
+    checkSubscription().finally(() => setHasCheckedSubscription(true));
+  }, [loadProducts, checkSubscription]);
 
-  const yearlyPrice = products.yearly?.displayPrice ?? '';
-  const monthlyPrice = products.monthly?.displayPrice ?? '';
-
-  const yearlyPerMonthHint = (() => {
-    const numeric = products.yearly?.price;
-    const currency = products.yearly?.currency;
-    if (typeof numeric !== 'number' || !isFinite(numeric) || numeric <= 0) {
-      return '';
-    }
-    const perMonth = numeric / 12;
-    try {
-      if (currency) {
-        return `~${new Intl.NumberFormat(undefined, {
-          style: 'currency',
-          currency,
-          maximumFractionDigits: 2,
-        }).format(perMonth)}/month`;
-      }
-    } catch {
-      // Fall through to plain number.
-    }
-    return `~${perMonth.toFixed(2)}/month`;
-  })();
+  const yearlyPrice = DISPLAY_PRICES.yearly;
+  const monthlyPrice = DISPLAY_PRICES.monthly;
+  const yearlyPerMonthHint = DISPLAY_PRICES.yearlyPerMonth;
 
   const handleBack = () => {
     if (navigation.canGoBack()) {
@@ -78,7 +74,9 @@ export function Subscription() {
       return;
     }
 
-    const fallbackRoute = !isSubscribed && isTrialExpired()
+    const fallbackRoute = isUsingSharedSubscription
+      ? ScreenNames.HOME_TABS
+      : !hasOwnSubscription && isTrialExpired()
       ? ScreenNames.TRIAL_EXPIRED
       : ScreenNames.TRIAL_WELCOME;
 
@@ -99,6 +97,9 @@ export function Subscription() {
       }
       const success = await purchaseSubscription(productId);
       if (success) {
+        if (useSharedAccessStore.getState().isSharedAccessActive) {
+          await markSharedAccessUpgraded();
+        }
         navigation.reset({
           index: 0,
           routes: [{ name: ScreenNames.HOME_TABS }],
@@ -114,10 +115,26 @@ export function Subscription() {
     try {
       const success = await restorePurchases();
       if (success) {
+        if (useSharedAccessStore.getState().isSharedAccessActive) {
+          await markSharedAccessUpgraded();
+        }
         navigation.reset({
           index: 0,
           routes: [{ name: ScreenNames.HOME_TABS }],
         });
+        return;
+      }
+
+      const restoreStatus = await getRestorePurchaseStatus();
+      if (restoreStatus === 'previous-expired') {
+        setError(
+          'We found a previous subscription for this store account, but it is no longer active. Choose a plan to subscribe again.'
+        );
+      } else {
+        Alert.alert(
+          'No Previous Subscription Found',
+          'We could not find a previous subscription for this store account. Choose a plan to start your Nevermore subscription.'
+        );
       }
     } catch (err: any) {
       setError(err?.message || 'Unable to restore purchases. Please try again.');
@@ -226,15 +243,49 @@ export function Subscription() {
           >
             <Text style={styles.title}>SUBSCRIPTION</Text>
             
-            <Text style={styles.description}>
-              Start your <Text style={styles.descriptionHighlight}>3-day free trial</Text>. Continue anytime with a subscription.
-            </Text>
+            {!hasOwnSubscription && !isUsingSharedSubscription && hasCheckedSubscription ? (
+              <Text style={styles.description}>
+                Start your <Text style={styles.descriptionHighlight}>3-day free trial</Text>. Continue anytime with a subscription.
+              </Text>
+            ) : null}
 
-            {isSubscribed ? (
-              <View style={styles.subscribedContainer}>
-                <Text style={styles.subscribedText}>You have an active subscription.</Text>
-                <Text style={styles.subscribedSubtext}>You have full access to all content.</Text>
+            {isUsingSharedSubscription ? (
+              <View style={styles.sharedAccessCard}>
+                <Text style={styles.sharedAccessTitle}>Create Your Own Support Circle</Text>
+                <Text style={styles.sharedAccessText}>
+                  You're currently using Nevermore through another member's subscription.
+                </Text>
+                <Text style={styles.sharedAccessText}>
+                  To invite your own loved ones, you'll need your own Nevermore subscription.
+                </Text>
               </View>
+            ) : null}
+
+            {!hasCheckedSubscription && !isUsingSharedSubscription ? (
+              <View style={styles.subscriptionCheckContainer}>
+                <ActivityIndicator size="small" color="#8B5CF6" />
+                <Text style={styles.subscriptionCheckText}>Checking subscription...</Text>
+              </View>
+            ) : hasOwnSubscription ? (
+              <>
+                <View style={styles.subscribedContainer}>
+                  <Text style={styles.subscribedText}>You have an active subscription</Text>
+                </View>
+                <View style={styles.plansContainer}>
+                  {activePlan === 'monthly'
+                    ? renderPlanCard('monthly', 'MONTHLY', monthlyPrice, true)
+                    : activePlan === 'yearly'
+                    ? renderPlanCard('yearly', 'YEARLY', yearlyPrice, true)
+                    : (
+                      <View style={styles.activePlanFallbackCard}>
+                        <Text style={styles.activePlanFallbackTitle}>Active Plan</Text>
+                        <Text style={styles.activePlanFallbackText}>
+                          Your subscription is active. Restore purchases to refresh plan details if needed.
+                        </Text>
+                      </View>
+                    )}
+                </View>
+              </>
             ) : (
               <>
                 {/* Subscription Plans */}
@@ -250,7 +301,7 @@ export function Subscription() {
                 {/* Buttons */}
                 <View style={styles.buttonContainer}>
                   <Button
-                    title={isLoading ? 'Processing...' : 'Subscribe'}
+                    title={isLoading ? 'Processing...' : isUsingSharedSubscription ? 'Get my own subscription' : 'Subscribe'}
                     onPress={handleSubscribe}
                     variant="primary"
                     size="medium"
@@ -332,6 +383,29 @@ const styles = StyleSheet.create({
   },
   descriptionHighlight: {
     color: '#8B5CF6',
+  },
+  sharedAccessCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    borderColor: 'rgba(139, 92, 246, 0.35)',
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingHorizontal: 20,
+    paddingVertical: 24,
+    marginBottom: 24,
+  },
+  sharedAccessTitle: {
+    fontSize: 22,
+    color: '#ffffff',
+    fontFamily: 'Cinzel_600SemiBold',
+    lineHeight: 30,
+    marginBottom: 18,
+  },
+  sharedAccessText: {
+    fontSize: 15,
+    color: 'rgba(255, 255, 255, 0.78)',
+    fontFamily: 'Roboto_400Regular',
+    lineHeight: 22,
+    marginBottom: 14,
   },
   plansContainer: {
     marginBottom: 20,
@@ -471,8 +545,21 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     fontFamily: 'Roboto_400Regular',
   },
-  subscribedContainer: {
+  subscriptionCheckContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 20,
     paddingVertical: 24,
+  },
+  subscriptionCheckText: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.78)',
+    fontFamily: 'Roboto_400Regular',
+  },
+  subscribedContainer: {
+    paddingTop: 8,
+    paddingBottom: 18,
   },
   subscribedText: {
     fontSize: 18,
@@ -484,5 +571,27 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: 'rgba(255,255,255,0.8)',
     fontFamily: 'Roboto_400Regular',
+  },
+  activePlanFallbackCard: {
+    backgroundColor: '#000000',
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: '#8B5CF6',
+    paddingHorizontal: 20,
+    paddingVertical: 24,
+  },
+  activePlanFallbackTitle: {
+    fontSize: 16,
+    color: '#ffffff',
+    fontFamily: 'Cinzel_600SemiBold',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 10,
+  },
+  activePlanFallbackText: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.78)',
+    fontFamily: 'Roboto_400Regular',
+    lineHeight: 21,
   },
 });

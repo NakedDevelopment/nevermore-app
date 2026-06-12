@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Dimensions, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Dimensions, FlatList, ImageBackground as RNImageBackground, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -7,8 +7,6 @@ import { DrawerActions } from '@react-navigation/native';
 import {
   Canvas,
   Image,
-  Text as SkiaText,
-  useFont,
   useImage,
 } from '@shopify/react-native-skia';
 import Animated, { 
@@ -17,13 +15,11 @@ import Animated, {
   withTiming, 
   withDelay,
 } from 'react-native-reanimated';
-import { Cinzel_400Regular } from '@expo-google-fonts/cinzel';
 import { BlurView } from 'expo-blur';
 import MenuIcon from '../../assets/icons/menu';
 import BookmarkActiveIcon from '../../assets/icons/bookmark-active';
 import { useBookmarkStore } from '../../store/bookmarkStore';
 import { ScreenNames } from '../../constants/ScreenNames';
-import { useTabSwitcher } from '../../hooks/useTabSwitcher';
 import { Image as ExpoImage } from 'expo-image';
 import { ConfirmationModal } from '../../components/ConfirmationModal';
 
@@ -52,7 +48,6 @@ export function Bookmark() {
   
   const width = Dimensions.get('window').width;
   const bg = useImage(require('../../assets/main-bg.png'));
-  const headerText = useFont(Cinzel_400Regular, 40);
   const insets = useSafeAreaInsets();
 
   // Reanimated shared values for entrance animations
@@ -62,19 +57,12 @@ export function Bookmark() {
   const contentTranslateY = useSharedValue(50);
   const bookmarkScales = useSharedValue<number[]>([]);
   const bookmarkOpacities = useSharedValue<number[]>([]);
-
-  const tabSwitcher = useTabSwitcher({
-    tabs: ['Recovery', 'Support'],
-    activeTab: activeTab,
-    onTabChange: (tab) => {
-      const newTab = tab as 'Recovery' | 'Support';
-      setActiveTab(newTab);
-      setStoreActiveTab(newTab);
-    },
-    y: 170,
-  });
-
   const filteredBookmarks = getFilteredBookmarks(activeTab);
+
+  const handleTabChange = (tab: 'Recovery' | 'Support') => {
+    setActiveTab(tab);
+    setStoreActiveTab(tab);
+  };
 
   useEffect(() => {
     if (filteredBookmarks.length > 0) {
@@ -183,43 +171,36 @@ export function Bookmark() {
    
       {/* Background Canvas - always visible to prevent black screen */}
       <View style={styles.backgroundContainer}>
+        <RNImageBackground
+          source={require('../../assets/main-bg.png')}
+          style={StyleSheet.absoluteFillObject}
+          resizeMode="cover"
+        />
         <Canvas style={styles.canvas}>
-          <Image image={bg} x={0} y={0} width={width} height={900} fit="cover" />
+          {bg ? <Image image={bg} x={0} y={0} width={width} height={900} fit="cover" /> : null}
         </Canvas>
       </View>
 
       {/* Content - animated */}
       <Animated.View style={[styles.canvasTouchable, contentAnimatedStyle]}>
-        <TouchableOpacity 
-          style={styles.canvasTouchable}
-          activeOpacity={1}
-          onPress={(event) => {
-            const { locationY } = event.nativeEvent;
-            const bookmarkIndex = Math.floor((locationY - 240) / 90);
-            if (bookmarkIndex >= 0 && bookmarkIndex < filteredBookmarks.length) {
-              handleBookmarkPress(filteredBookmarks[bookmarkIndex], bookmarkIndex);
-            }
-          }}
-        >
-          <Canvas style={styles.canvas}>
-            {/* Background image rendered first so BackdropFilter can blur it */}
-            <Image image={bg} x={0} y={0} width={width} height={900} fit="cover" />
-            
-            <SkiaText
-              text="Bookmark"
-              font={headerText}
-              color="white"
-              x={headerText ? width / 2 - (headerText.getTextWidth("Bookmark") / 2) : width / 2 - 100}
-              y={150}
-            />
-
-            {tabSwitcher.containerElement}
-            {tabSwitcher.indicatorElement}
-            {tabSwitcher.textElements}
-          </Canvas>
-          
-          {tabSwitcher.touchableElements}
-        </TouchableOpacity>
+        <View style={styles.contentHeader}>
+          <Text style={styles.pageTitle}>Bookmark</Text>
+          <View style={styles.segmentedControl}>
+            {(['Recovery', 'Support'] as const).map((tab) => {
+              const isActive = activeTab === tab;
+              return (
+                <TouchableOpacity
+                  key={tab}
+                  style={[styles.segmentButton, isActive && styles.segmentButtonActive]}
+                  onPress={() => handleTabChange(tab)}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.segmentButtonText}>{tab}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
 
         {filteredBookmarks.length === 0 ? (
           <View style={styles.emptyStateContainer}>
@@ -324,6 +305,45 @@ const styles = StyleSheet.create({
   },
   canvas: {
     flex: 1,
+  },
+  contentHeader: {
+    position: 'absolute',
+    top: 120,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 3,
+  },
+  pageTitle: {
+    color: '#fff',
+    fontSize: 34,
+    fontFamily: 'Cinzel_400Regular',
+    textTransform: 'uppercase',
+    marginBottom: 16,
+  },
+  segmentedControl: {
+    width: '64%',
+    minWidth: 240,
+    height: 38,
+    borderRadius: 8,
+    padding: 4,
+    flexDirection: 'row',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    overflow: 'hidden',
+  },
+  segmentButton: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 6,
+  },
+  segmentButtonActive: {
+    backgroundColor: '#8B5CF6',
+  },
+  segmentButtonText: {
+    color: '#fff',
+    fontSize: 13,
+    fontFamily: 'Roboto_500Medium',
   },
   flatListContainer: {
     position: 'absolute',

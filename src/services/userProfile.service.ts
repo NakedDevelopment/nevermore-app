@@ -11,6 +11,8 @@ export interface UserProfile {
   type?: string;
   /** ISO datetime when the free trial was first started (Appwrite datetime attribute). */
   trial_started_at?: string;
+  subscription_status?: 'active' | 'inactive';
+  subscription_updated_at?: string;
   $createdAt?: string;
   $updatedAt?: string;
 }
@@ -137,6 +139,24 @@ class UserProfileService {
     } catch (error: any) {
       console.error('Update user profile error:', error);
       throw new Error(error.message || 'Failed to update user profile');
+    }
+  }
+
+  async syncSubscriptionStatus(auth_id: string, isSubscribed: boolean): Promise<void> {
+    try {
+      this.validateConfig();
+
+      const profile = await this.getUserProfileByAuthId(auth_id);
+      if (!profile?.$id) {
+        return;
+      }
+
+      await this.updateUserProfile(profile.$id, {
+        subscription_status: isSubscribed ? 'active' : 'inactive',
+        subscription_updated_at: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.warn('syncSubscriptionStatus error:', error);
     }
   }
 

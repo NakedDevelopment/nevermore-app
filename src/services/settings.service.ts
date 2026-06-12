@@ -71,7 +71,9 @@ class SettingsService {
 
   async getPrivacyPolicy(): Promise<string | null> {
     try {
-      const setting = await this.getSettingByKey('privacyPolicy');
+      const setting =
+        (await this.getSettingByKey('privacy')) ||
+        (await this.getSettingByKey('privacyPolicy'));
       return setting?.value || null;
     } catch (error: unknown) {
       console.error('Error fetching privacy policy:', error);
@@ -81,7 +83,9 @@ class SettingsService {
 
   async getTermsAndConditions(): Promise<string | null> {
     try {
-      const setting = await this.getSettingByKey('termsAndCondition');
+      const setting =
+        (await this.getSettingByKey('terms')) ||
+        (await this.getSettingByKey('termsAndCondition'));
       return setting?.value || null;
     } catch (error: unknown) {
       console.error('Error fetching terms and conditions:', error);

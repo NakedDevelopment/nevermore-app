@@ -10,13 +10,21 @@ import {
   TouchableOpacity,
   View,
   ImageBackground,
+  Alert,
 } from 'react-native';
 import CheckmarkIcon from '../assets/icons/checkmark';
 import { Button } from './Button';
+import { useSharedAccessStore } from '../store/sharedAccessStore';
 import { useSubscriptionStore } from '../store/subscriptionStore';
 import { getIAPProductIds } from '../services/iap.service';
 
 type PlanType = 'monthly' | 'yearly';
+
+const DISPLAY_PRICES = {
+  monthly: '$13.99',
+  yearly: '$99',
+  yearlyPerMonth: '~$8.25 / month equivalent',
+};
 
 interface SubscriptionPopupProps {
   isVisible: boolean;
@@ -36,8 +44,10 @@ export function SubscriptionPopup({
     error,
     purchaseSubscription,
     restorePurchases,
+    getRestorePurchaseStatus,
     setError,
   } = useSubscriptionStore();
+  const markSharedAccessUpgraded = useSharedAccessStore((s) => s.markSharedAccessUpgraded);
 
   const [selectedPlan, setSelectedPlan] = React.useState<PlanType>('monthly');
 
@@ -87,18 +97,37 @@ export function SubscriptionPopup({
     const productId = productIds[selectedPlan];
     const success = await purchaseSubscription(productId);
     if (success) {
+      if (useSharedAccessStore.getState().isSharedAccessActive) {
+        await markSharedAccessUpgraded();
+      }
       onSubscribeSuccess?.();
       onClose();
     }
-  }, [selectedPlan, purchaseSubscription, onSubscribeSuccess, onClose]);
+  }, [selectedPlan, purchaseSubscription, markSharedAccessUpgraded, onSubscribeSuccess, onClose]);
 
   const handleRestore = useCallback(async () => {
     const success = await restorePurchases();
     if (success) {
+      if (useSharedAccessStore.getState().isSharedAccessActive) {
+        await markSharedAccessUpgraded();
+      }
       onSubscribeSuccess?.();
       onClose();
+      return;
     }
-  }, [restorePurchases, onSubscribeSuccess, onClose]);
+
+    const restoreStatus = await getRestorePurchaseStatus();
+    if (restoreStatus === 'previous-expired') {
+      setError(
+        'We found a previous subscription for this store account, but it is no longer active. Choose a plan to subscribe again.'
+      );
+    } else {
+      Alert.alert(
+        'No Previous Subscription Found',
+        'We could not find a previous subscription for this store account. Choose a plan to start your Nevermore subscription.'
+      );
+    }
+  }, [restorePurchases, getRestorePurchaseStatus, setError, markSharedAccessUpgraded, onSubscribeSuccess, onClose]);
 
   const benefits = [
     'Full access to all temptations',
@@ -151,9 +180,7 @@ export function SubscriptionPopup({
             <View style={styles.priceContainer}>
               <Text style={styles.price}>{price}</Text>
               <Text style={styles.priceUnit}>{isYearly ? 'per year' : 'per month'}</Text>
-              {isYearly && (
-                <Text style={styles.priceHint}>~$3.75 / month equivalent</Text>
-              )}
+              {isYearly && <Text style={styles.priceHint}>{DISPLAY_PRICES.yearlyPerMonth}</Text>}
             </View>
           </View>
         </View>
@@ -193,8 +220,8 @@ export function SubscriptionPopup({
         </Text>
 
         <View style={styles.plansContainer}>
-          {renderPlanCard('monthly', 'MONTHLY', '$4.99', selectedPlan === 'monthly')}
-          {renderPlanCard('yearly', 'YEARLY', '$44.99', selectedPlan === 'yearly')}
+          {renderPlanCard('monthly', 'MONTHLY', DISPLAY_PRICES.monthly, selectedPlan === 'monthly')}
+          {renderPlanCard('yearly', 'YEARLY', DISPLAY_PRICES.yearly, selectedPlan === 'yearly')}
         </View>
 
         {error ? (

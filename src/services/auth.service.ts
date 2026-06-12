@@ -127,10 +127,10 @@ export const createPasswordRecovery = async (
   url?: string
 ): Promise<void> => {
   try {
-    // Use nevermore-admin-app.vercel.app for deep linking - opens app if installed, falls back to website homepage if not
+    // Use the admin redirect app for deep linking - opens app if installed, falls back to the web redirect if not.
     // The app will intercept /reset-password path via Universal Links/App Links
     // Website will open at root (/) when app is not installed
-    const recoveryUrl = url || "https://nevermore-admin-app.vercel.app/reset-password";
+    const recoveryUrl = url || "https://nevermore-admin-app-seven.vercel.app/reset-password";
     await account.createRecovery({
       email,
       url: recoveryUrl,
@@ -167,7 +167,7 @@ export const createMagicURLToken = async (
   url?: string
 ): Promise<void> => {
   try {
-    const magicUrl = url || "https://nevermore-admin-app.vercel.app/verify-magic-url";
+    const magicUrl = url || "https://nevermore-admin-app-seven.vercel.app/verify-magic-url";
     await account.createMagicURLToken({
       userId: ID.unique(),
       email,

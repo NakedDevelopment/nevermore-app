@@ -119,7 +119,7 @@ export default function TemptationDetails() {
     const backgroundColorOpacity = interpolate(
       scrollY.value,
       [0, 150],
-      [0, 0.4],
+      [0.22, 0.5],
       Extrapolate.CLAMP
     );
 
@@ -140,7 +140,7 @@ export default function TemptationDetails() {
     const hasChanged = audioFiles.length !== audioFilesRef.current.length || 
                        audioFiles.some((file, idx) => file !== audioFilesRef.current[idx]);
     
-    if (hasChanged && audioFiles.length > 0) {
+    if (hasChanged) {
       audioFilesRef.current = audioFiles;
       loadPlaylist(audioFiles);
     }
@@ -205,9 +205,10 @@ export default function TemptationDetails() {
 
   const handleButtonPress = (buttonId: 'recovery' | 'support') => {
     setActiveButton(buttonId);
-    // Stop reflection audio on tab change so Recovery clips cannot keep playing on Support (and vice versa).
-    void mainContentAudioPlayer.stop();
-    void reflectionAudioPlayer.stop();
+    // Clear role-specific audio on tab change so Recovery clips cannot be
+    // reused or auto-played when Support becomes active (and vice versa).
+    void mainContentAudioPlayer.unloadAudio();
+    void reflectionAudioPlayer.unloadAudio();
   };
 
   const tabSwitcher = useTabSwitcher({
@@ -217,7 +218,7 @@ export default function TemptationDetails() {
       const newButton = tab.toLowerCase() as 'recovery' | 'support';
       handleButtonPress(newButton);
     },
-    y: 100,
+    y: 0,
     enabled: !!extractedCategoryId,
   });
 
@@ -266,6 +267,10 @@ export default function TemptationDetails() {
 
       <Animated.ScrollView
         style={[styles.content, contentAnimatedStyle]}
+        contentContainerStyle={[
+          styles.contentContainer,
+          { paddingTop: insets.top + 82 },
+        ]}
         showsVerticalScrollIndicator={false}
         scrollEventThrottle={16}
         onScroll={scrollHandler}
@@ -290,7 +295,9 @@ export default function TemptationDetails() {
         )}
 
         <View style={styles.mainTitleContainer}>
-          <Text style={styles.mainTitle}>{content.title}</Text>
+          <Text style={styles.mainTitle} numberOfLines={3} ellipsizeMode="tail">
+            {content.title}
+          </Text>
           <TouchableOpacity style={styles.bookmarkButton} onPress={handleBookmarkToggle}>
             {isCurrentlyBookmarked ? (
               <BookmarkActiveIcon width={18} height={20} color="#965CDF" />
@@ -479,18 +486,18 @@ const styles = StyleSheet.create({
     padding: 5,
   },
   canvasContainer: {
-    height: 160,
+    height: 72,
     position: 'relative',
     overflow: 'visible',
-    marginTop: 10,
   },
   canvas: {
     width: '100%',
-    height: 300,
+    height: 72,
   },
   content: {
     flex: 1,
-    paddingTop: 20,
+  },
+  contentContainer: {
     paddingBottom: 20,
   },
   mainTitleContainer: {
@@ -499,15 +506,17 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     paddingHorizontal: 20,
     marginBottom: 20,
+    gap: 12,
   },
   mainTitle: {
     color: '#FFFFFF',
-    fontSize: 24,
+    fontSize: 22,
+    lineHeight: 30,
     fontWeight: '600',
     fontFamily: 'Cinzel_400Regular',
     textAlign: 'left',
     flex: 1,
-    paddingRight: 10,
+    minWidth: 0,
   },
   imageContainer: {
     marginBottom: 20,

@@ -3,6 +3,7 @@ import { NavigationContainer, useNavigationContainerRef } from '@react-navigatio
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createDrawerNavigator } from '@react-navigation/drawer';
 import React, { useEffect, useMemo, useRef } from 'react';
+import { Linking } from 'react-native';
 import { useAuthStore } from '../store/authStore';
 import { useOnboardingStore } from '../store/onboardingStore';
 import { ScreenNames } from '../constants/ScreenNames';
@@ -41,6 +42,7 @@ import { CustomDrawerContent } from '../components/DrawerMenu';
 import Home from './screens/Home';
 import { useSubscriptionStore } from '../store/subscriptionStore';
 import { useTrialStore } from '../store/trialStore';
+import { useSharedAccessStore } from '../store/sharedAccessStore';
 
 const Tab = createBottomTabNavigator();
 const Drawer = createDrawerNavigator();
@@ -49,8 +51,10 @@ function HomeTabs() {
   return (
     <Tab.Navigator
       initialRouteName={ScreenNames.FORTY_DAY}
+      detachInactiveScreens={false}
       screenOptions={{
-        animation: 'shift',
+        animation: 'none',
+        lazy: false,
         tabBarStyle: {
           backgroundColor: '#131313',
           borderTopColor: 'transparent',
@@ -337,25 +341,21 @@ function RootStack({ initialRouteName }: { initialRouteName: string }) {
 const linking = {
   prefixes: [
     'nevermoreapp://',
+    'https://nevermoreapp.com',
+    'https://nevermore-admin-app-seven.vercel.app',
     'https://nevermore-admin-app.vercel.app',
   ],
   config: {
     screens: {
       [ScreenNames.CREATE_NEW_PASSWORD]: {
-        path: [
-          'reset-password',
-          'create-new-password',
-        ],
+        path: 'reset-password',
         parse: {
           userId: (userId: string) => userId,
           secret: (secret: string) => secret,
         },
       },
       [ScreenNames.MAGIC_URL_VERIFY]: {
-        path: [
-          'verify-magic-url',
-          'verify-magic-url',
-        ],
+        path: 'verify-magic-url',
         parse: {
           userId: (userId: string) => userId,
           secret: (secret: string) => secret,
@@ -396,6 +396,56 @@ const ONBOARDING_STACK_ORDER: string[] = [
   ScreenNames.TRIAL_WELCOME,
 ];
 
+function getParamsFromUrl(url: string): Record<string, string> {
+  const queryStart = url.indexOf('?');
+  if (queryStart < 0) return {};
+
+  const query = url.slice(queryStart + 1);
+  const params = new URLSearchParams(query);
+  const result: Record<string, string> = {};
+  params.forEach((value, key) => {
+    result[key] = value;
+  });
+  return result;
+}
+
+function getPathFromUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    const schemePath = parsed.protocol === 'nevermoreapp:'
+      ? `${parsed.hostname}${parsed.pathname}`
+      : parsed.pathname;
+
+    return schemePath.replace(/^\/+/, '').split('/')[0];
+  } catch {
+    const withoutQuery = url.split('?')[0] ?? '';
+    return withoutQuery
+      .replace(/^nevermoreapp:\/+/, '')
+      .replace(/^https?:\/\/[^/]+\//, '')
+      .replace(/^\/+/, '')
+      .split('/')[0];
+  }
+}
+
+function getRouteFromDeepLink(url: string): { name: ScreenNames; params?: Record<string, string> } | null {
+  const path = getPathFromUrl(url);
+  const params = getParamsFromUrl(url);
+
+  if (path === 'invite') {
+    return { name: ScreenNames.INVITE, params };
+  }
+
+  if (path === 'reset-password' || path === 'create-new-password') {
+    return { name: ScreenNames.CREATE_NEW_PASSWORD, params };
+  }
+
+  if (path === 'verify-magic-url') {
+    return { name: ScreenNames.MAGIC_URL_VERIFY, params };
+  }
+
+  return null;
+}
+
 function buildOnboardingStackRoutes(currentStep: string) {
   const idx = ONBOARDING_STACK_ORDER.indexOf(currentStep);
   const names = idx >= 0 ? ONBOARDING_STACK_ORDER.slice(0, idx + 1) : [currentStep];
@@ -406,10 +456,44 @@ export function Navigation(props?: any) {
   const { isAuthenticated } = useAuthStore();
   const { isOnboardingComplete, currentOnboardingStep, completeOnboarding } = useOnboardingStore();
   const isSubscribed = useSubscriptionStore((s) => s.isSubscribed);
+  const isSharedAccessActive = useSharedAccessStore((s) => s.isSharedAccessActive);
+  const refreshSharedAccess = useSharedAccessStore((s) => s.refreshSharedAccess);
   const trialStartDate = useTrialStore((s) => s.trialStartDate);
   const isTrialExpired = useTrialStore((s) => s.isTrialExpired);
   const navigationRef = useNavigationContainerRef();
   const didRestoreOnboardingStackRef = useRef(false);
+  const pendingDeepLinkRouteRef = useRef<{ name: ScreenNames; params?: Record<string, string> } | null>(null);
+
+  const navigateToDeepLinkRoute = React.useCallback((url: string) => {
+    const route = getRouteFromDeepLink(url);
+    if (!route) return false;
+
+    if (!navigationRef.isReady()) {
+      pendingDeepLinkRouteRef.current = route;
+      return true;
+    }
+
+    pendingDeepLinkRouteRef.current = null;
+    navigationRef.reset({
+      index: 0,
+      routes: [{ name: route.name as any, params: route.params }],
+    } as any);
+    return true;
+  }, [navigationRef]);
+
+  useEffect(() => {
+    Linking.getInitialURL().then((url) => {
+      if (url) {
+        navigateToDeepLinkRoute(url);
+      }
+    });
+
+    const subscription = Linking.addEventListener('url', ({ url }) => {
+      navigateToDeepLinkRoute(url);
+    });
+
+    return () => subscription.remove();
+  }, [navigateToDeepLinkRoute]);
 
   // Determine initial route based on auth and onboarding status
   const getInitialRouteName = (): string => {
@@ -417,7 +501,7 @@ export function Navigation(props?: any) {
       return ScreenNames.WELCOME;
     }
 
-    if (isOnboardingComplete && !isSubscribed && isTrialExpired()) {
+    if (isOnboardingComplete && !isSubscribed && !isSharedAccessActive && isTrialExpired()) {
       return ScreenNames.TRIAL_EXPIRED;
     }
 
@@ -444,6 +528,7 @@ export function Navigation(props?: any) {
   // Without this, resuming directly to a deep onboarding screen creates a stack
   // with no previous routes, so iOS back/gesture can't navigate.
   useEffect(() => {
+    if (pendingDeepLinkRouteRef.current) return;
     if (!onboardingResetState) return;
     if (!navigationRef.isReady()) return;
     if (didRestoreOnboardingStackRef.current) return;
@@ -468,12 +553,21 @@ export function Navigation(props?: any) {
     }
   }, [isAuthenticated, initialRouteName, isOnboardingComplete, currentOnboardingStep, completeOnboarding]);
 
+  useEffect(() => {
+    if (!isAuthenticated || !isOnboardingComplete) return;
+
+    refreshSharedAccess();
+    const intervalId = setInterval(refreshSharedAccess, 60 * 1000);
+    return () => clearInterval(intervalId);
+  }, [isAuthenticated, isOnboardingComplete, refreshSharedAccess]);
+
   // If the trial expires while user is in the app, hard-block with TrialExpired.
   useEffect(() => {
     const maybeBlockExpiredTrial = () => {
       if (!isAuthenticated) return;
       if (!isOnboardingComplete) return;
       if (isSubscribed) return;
+      if (isSharedAccessActive) return;
       if (!navigationRef.isReady()) return;
       if (!isTrialExpired()) return;
 
@@ -489,11 +583,21 @@ export function Navigation(props?: any) {
     maybeBlockExpiredTrial();
     const intervalId = setInterval(maybeBlockExpiredTrial, 60 * 1000);
     return () => clearInterval(intervalId);
-  }, [isAuthenticated, isOnboardingComplete, isSubscribed, isTrialExpired, trialStartDate, navigationRef]);
+  }, [isAuthenticated, isOnboardingComplete, isSubscribed, isSharedAccessActive, isTrialExpired, trialStartDate, navigationRef]);
 
   return (
     <NavigationContainer
       ref={navigationRef}
+      onReady={() => {
+        if (pendingDeepLinkRouteRef.current) {
+          const route = pendingDeepLinkRouteRef.current;
+          pendingDeepLinkRouteRef.current = null;
+          navigationRef.reset({
+            index: 0,
+            routes: [{ name: route.name as any, params: route.params }],
+          } as any);
+        }
+      }}
       linking={linking}
       initialState={(onboardingResetState as any) ?? undefined}
       {...props}

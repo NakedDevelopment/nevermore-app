@@ -10,7 +10,7 @@ import { useSubscriptionStore } from '../../store/subscriptionStore';
 export function TrialExpired() {
   const navigation = useNavigation<any>();
   const { signOut } = useAuthStore();
-  const { restorePurchases, isLoading } = useSubscriptionStore();
+  const { restorePurchases, getRestorePurchaseStatus, isLoading } = useSubscriptionStore();
 
   const handleSubscribe = useCallback(() => {
     navigation.navigate(ScreenNames.SUBSCRIPTION);
@@ -25,12 +25,23 @@ export function TrialExpired() {
           routes: [{ name: ScreenNames.HOME_TABS }],
         });
       } else {
-        Alert.alert('Restore failed', 'No active subscription was found to restore.');
+        const restoreStatus = await getRestorePurchaseStatus();
+        if (restoreStatus === 'previous-expired') {
+          Alert.alert(
+            'Subscription Not Active',
+            'We found a previous subscription for this store account, but it is no longer active. Subscribe again to continue.'
+          );
+        } else {
+          Alert.alert(
+            'No Previous Subscription Found',
+            'We could not find a previous subscription for this store account. Choose Subscribe to start access.'
+          );
+        }
       }
     } catch (e) {
       Alert.alert('Restore failed', e instanceof Error ? e.message : 'Please try again.');
     }
-  }, [navigation, restorePurchases]);
+  }, [navigation, restorePurchases, getRestorePurchaseStatus]);
 
   const handleLogout = useCallback(async () => {
     await signOut();

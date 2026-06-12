@@ -5,6 +5,8 @@ import { useBookmarkStore } from './bookmarkStore';
 import { useFortyDayStore } from './fortyDayStore';
 import { useOnboardingStore } from './onboardingStore';
 import { useTrialStore, syncTrialFromUserProfile } from './trialStore';
+import { useSharedAccessStore } from './sharedAccessStore';
+import { useSubscriptionStore } from './subscriptionStore';
 import { ScreenNames } from '../constants/ScreenNames';
 
 interface AuthState {
@@ -39,6 +41,8 @@ export const useAuthStore = create<AuthState>((set) => ({
       // This ensures new users start onboarding
       useOnboardingStore.getState().setCurrentStep(ScreenNames.PERMISSION);
       await syncTrialFromUserProfile(user.$id);
+      await useSharedAccessStore.getState().refreshSharedAccess();
+      await useSubscriptionStore.getState().checkSubscription();
       set({ user, isAuthenticated: true, isLoading: false });
     } catch (error: any) {
       set({ 
@@ -59,6 +63,8 @@ export const useAuthStore = create<AuthState>((set) => ({
         throw new Error('No authenticated user after sign in');
       }
       await syncTrialFromUserProfile(user.$id, { backfillTrialIfMissing: true });
+      await useSharedAccessStore.getState().refreshSharedAccess();
+      await useSubscriptionStore.getState().checkSubscription();
       // Mark onboarding as complete for existing users who sign in
       useOnboardingStore.getState().completeOnboarding();
       set({ user, isAuthenticated: true, isLoading: false });
@@ -80,9 +86,12 @@ export const useAuthStore = create<AuthState>((set) => ({
       // Clear onboarding state on sign out
       useOnboardingStore.getState().resetOnboarding();
       useTrialStore.getState().resetTrial();
+      useSharedAccessStore.getState().clearSharedAccess();
+      useSubscriptionStore.getState().resetSubscriptionState();
       
       set({ user: null, isAuthenticated: false, isLoading: false });
     } catch (error: any) {
+      useSharedAccessStore.getState().clearSharedAccess();
       set({ 
         error: error.message || 'Failed to sign out', 
         isLoading: false 
@@ -100,6 +109,8 @@ export const useAuthStore = create<AuthState>((set) => ({
       useFortyDayStore.getState().clearProgress();
       useOnboardingStore.getState().resetOnboarding();
       useTrialStore.getState().resetTrial();
+      useSharedAccessStore.getState().clearSharedAccess();
+      useSubscriptionStore.getState().resetSubscriptionState();
       
       set({ user: null, isAuthenticated: false, isLoading: false });
     } catch (error: any) {
@@ -117,11 +128,16 @@ export const useAuthStore = create<AuthState>((set) => ({
       const user = await authService.getCurrentUser();
       if (user) {
         await syncTrialFromUserProfile(user.$id, { backfillTrialIfMissing: true });
+        await useSharedAccessStore.getState().refreshSharedAccess();
+        await useSubscriptionStore.getState().checkSubscription();
         set({ user, isAuthenticated: true, isLoading: false });
       } else {
+        useSharedAccessStore.getState().clearSharedAccess();
+        useSubscriptionStore.getState().resetSubscriptionState();
         set({ user: null, isAuthenticated: false, isLoading: false });
       }
     } catch (error) {
+      useSubscriptionStore.getState().resetSubscriptionState();
       set({ user: null, isAuthenticated: false, isLoading: false });
     }
   },
@@ -167,6 +183,8 @@ export const useAuthStore = create<AuthState>((set) => ({
         throw new Error('No authenticated user after magic URL session');
       }
       await syncTrialFromUserProfile(user.$id, { backfillTrialIfMissing: true });
+      await useSharedAccessStore.getState().refreshSharedAccess();
+      await useSubscriptionStore.getState().checkSubscription();
       // Mark onboarding as complete for magic URL login (existing users)
       useOnboardingStore.getState().completeOnboarding();
       set({ user, isAuthenticated: true, isLoading: false });

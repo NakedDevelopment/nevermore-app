@@ -37,6 +37,7 @@ import { useAppNavigation } from '../../hooks/useAppNavigation';
 import { useWelcomeQuote } from '../../hooks/useWelcomeQuote';
 import { useOnboardingStore } from '../../store/onboardingStore';
 import { useAuthStore } from '../../store/authStore';
+import { useSharedAccessStore } from '../../store/sharedAccessStore';
 
 type RootStackParamList = {
   [ScreenNames.INVITE]: {
@@ -59,10 +60,11 @@ type InviteNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 export function Invite() {
     const navigation = useNavigation<InviteNavigationProp>();
     const route = useRoute<InviteRouteProp>();
-    const { navigateToInviteSend, navigateToSignUp } = useAppNavigation();
+    const { navigateToInviteSend } = useAppNavigation();
     const { quote, loading: quoteLoading } = useWelcomeQuote();
     const { setCurrentStep } = useOnboardingStore();
-    const { checkAuth } = useAuthStore();
+    const { checkAuth, signOut } = useAuthStore();
+    const { refreshSharedAccess } = useSharedAccessStore();
     
     const [isLoading, setIsLoading] = useState(false);
     const [isProcessingInvitation, setIsProcessingInvitation] = useState(false);
@@ -82,6 +84,23 @@ export function Invite() {
         }
     }, [isFromDeepLink]);
 
+    const resetToSignUp = async () => {
+        try {
+            await signOut();
+        } catch {
+            try {
+                await account.deleteSession('current');
+            } catch {
+                // No active session to clear.
+            }
+        }
+
+        navigation.reset({
+            index: 0,
+            routes: [{ name: ScreenNames.SIGN_UP }],
+        });
+    };
+
     const handleInvitationAcceptance = async () => {
         // Validate that we have all required parameters from the Magic URL
         if (!token || !userId || !secret) {
@@ -91,7 +110,7 @@ export function Invite() {
                 [
                     {
                         text: 'OK',
-                        onPress: () => navigateToSignUp(),
+                        onPress: resetToSignUp,
                     },
                 ]
             );
@@ -101,39 +120,16 @@ export function Invite() {
         setIsProcessingInvitation(true);
 
         try {
-            // Verify the invitation exists and is valid
-            const invitation = await invitationService.getInvitationByToken(token);
-            
-            if (!invitation) {
-                Alert.alert(
-                    'Invalid Invitation',
-                    'This invitation link is invalid or has expired. Please request a new invitation.',
-                    [
-                        {
-                            text: 'OK',
-                            onPress: () => navigateToSignUp(),
-                        },
-                    ]
-                );
-                return;
-            }
-
-            if (invitation.status !== 'pending') {
-                Alert.alert(
-                    'Invitation Already Used',
-                    `This invitation has already been ${invitation.status}.`,
-                    [
-                        {
-                            text: 'OK',
-                            onPress: () => navigateToSignUp(),
-                        },
-                    ]
-                );
-                return;
-            }
-
-            // Create session using Magic URL credentials
+            // Create session using Magic URL credentials before reading the invitation.
+            // Appwrite table permissions may require an authenticated user for invite lookup.
             try {
+                try {
+                    await account.getSession('current');
+                    await account.deleteSession('current');
+                } catch {
+                    // No existing session to clear.
+                }
+
                 await account.createSession({
                     userId,
                     secret,
@@ -146,18 +142,49 @@ export function Invite() {
                     throw new Error('Failed to retrieve user after session creation');
                 }
 
+                let invitation = await invitationService.getInvitationByToken(token);
+                if (!invitation && user.email) {
+                    invitation = await invitationService.getPendingInvitationByEmail(user.email);
+                }
+                
+                if (!invitation) {
+                    Alert.alert(
+                        'Invalid Invitation',
+                        'This invitation link is invalid or has expired. Please request a new invitation.',
+                        [
+                            {
+                                text: 'OK',
+                                onPress: resetToSignUp,
+                            },
+                        ]
+                    );
+                    return;
+                }
+
+                if (invitation.status !== 'pending') {
+                    Alert.alert(
+                        'Invitation Already Used',
+                        `This invitation has already been ${invitation.status}.`,
+                        [
+                            {
+                                text: 'OK',
+                                onPress: resetToSignUp,
+                            },
+                        ]
+                    );
+                    return;
+                }
+
                 // Update auth store
                 await checkAuth();
                 
-                // Check if this is a new user (created via Magic URL) or existing user
-                // New users created via Magic URL don't have a password set
-                const isNewUser = !user.passwordUpdate || user.passwordUpdate === user.registration;
-                
                 // Create or get user profile
                 let userProfile = null;
+                let isNewUser = false;
                 try {
                     userProfile = await userProfileService.getUserProfileByAuthId(user.$id);
                     if (!userProfile) {
+                        isNewUser = true;
                         // Create user profile with default values
                         await userProfileService.createUserProfile({
                             auth_id: user.$id,
@@ -173,10 +200,11 @@ export function Invite() {
                 
                 // Mark invitation as accepted
                 try {
-                    await invitationService.acceptInvitation(token);
+                    await invitationService.acceptInvitationRecord(invitation, user.$id);
                     if (user.email) {
                         await invitationService.acceptInvitationByEmail(user.email);
                     }
+                    await refreshSharedAccess();
                 } catch (acceptError) {
                     console.error('Failed to mark invitation as accepted:', acceptError);
                 }
@@ -194,11 +222,10 @@ export function Invite() {
                         routes: [{ name: ScreenNames.SET_PASSWORD }],
                     });
                 } else {
-                    // Existing users should still pass through trial welcome.
-                    setCurrentStep(ScreenNames.TRIAL_WELCOME);
+                    // Existing invited users already have shared access; skip trial/paywall screens.
                     navigation.reset({
                         index: 0,
-                        routes: [{ name: ScreenNames.TRIAL_WELCOME }],
+                        routes: [{ name: ScreenNames.HOME_TABS }],
                     });
                 }
             } catch (sessionError: any) {
@@ -211,7 +238,7 @@ export function Invite() {
                     [
                         {
                             text: 'Sign Up',
-                            onPress: () => navigateToSignUp(),
+                            onPress: resetToSignUp,
                         },
                     ]
                 );
@@ -225,7 +252,7 @@ export function Invite() {
             
             // On error, redirect to sign up
             setTimeout(() => {
-                navigateToSignUp();
+                resetToSignUp();
             }, 2000);
         } finally {
             setIsProcessingInvitation(false);
@@ -275,7 +302,7 @@ export function Invite() {
                     </View>
 
                     <View style={styles.content}>
-                        <Text style={styles.title}>INVITE A FRIEND</Text>
+                        <Text style={styles.title}>INVITE A LOVED ONE</Text>
 
                         <Text style={styles.description}>
                             Whether you're here for yourself or supporting someone else, you're in the right place.
@@ -286,7 +313,7 @@ export function Invite() {
 
                             <View style={styles.stepContainer}>
                                     <SmsIcon />
-                                <Text style={styles.stepText}>Send a personal invite link via email</Text>
+                                <Text style={styles.stepText}>Send a personal invite link to someone you trust</Text>
                             </View>
 
                             <View style={styles.stepContainer}>

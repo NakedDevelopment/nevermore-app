@@ -3,7 +3,7 @@
     "name": "nevermore-app",
     "slug": "nevermore-app",
     "version": "1.0.2",
-    "orientation": "default",
+    "orientation": "portrait",
     "icon": "./src/assets/App_Icon.png",
     "splash": {
       "image": "./src/assets/splash-bg.png",
@@ -16,7 +16,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.nevermore.app",
-      "buildNumber": "28",
+      "buildNumber": "55",
       "splash": {
         "image": "./src/assets/splash-bg.png",
         "resizeMode": "cover",

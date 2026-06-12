@@ -50,8 +50,9 @@ export const CreateNewPassword: React.FC = () => {
   const hasCapitalLetter = /[A-Z]/.test(password);
   const hasNumber = /\d/.test(password);
   const hasSpecialChar = /[!@#$%^&*(),.?":{}|<>]/.test(password);
+  const isMinLength = password.length >= 8;
   const passwordsMatch = password === confirmPassword && password.length > 0;
-  const isValidPassword = hasCapitalLetter && hasNumber && hasSpecialChar && passwordsMatch;
+  const isValidPassword = hasCapitalLetter && hasNumber && hasSpecialChar && isMinLength && passwordsMatch;
 
   const isFromDeepLink = !!(userId && secret);
 
@@ -176,6 +177,13 @@ export const CreateNewPassword: React.FC = () => {
                     {hasSpecialChar && <CheckIcon width={12} height={12} color="#ffffff" />}
                   </View>
                   <Text style={styles.requirementText}>At least 1 special character</Text>
+                </View>
+
+                <View style={styles.requirementItem}>
+                  <View style={[styles.checkIcon, isMinLength && styles.checkIconActive]}>
+                    {isMinLength && <CheckIcon width={12} height={12} color="#ffffff" />}
+                  </View>
+                  <Text style={styles.requirementText}>Minimum 8 characters</Text>
                 </View>
 
                 <View style={styles.requirementItem}>

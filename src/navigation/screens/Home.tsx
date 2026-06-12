@@ -9,8 +9,8 @@ import {
   Image,
   useImage,
 } from "@shopify/react-native-skia";
-import React, { useEffect, useState } from "react";
-import { Dimensions, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import React, { useEffect, useRef, useState } from "react";
+import { Dimensions, ImageBackground as RNImageBackground, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import Animated, {
   runOnJS,
   useAnimatedStyle,
@@ -66,6 +66,7 @@ export default function Home() {
   const scrollY = useSharedValue(0);
   const categoryScales = useSharedValue<number[]>([]);
   const categoryOpacities = useSharedValue<number[]>([]);
+  const hasPlayedEntranceRef = useRef(false);
 
   useEffect(() => {
     if (allContent.length === 0 || categories.length === 0) return;
@@ -143,6 +144,18 @@ export default function Home() {
     React.useCallback(() => {
       if (categories.length === 0 || loading) return;
 
+      if (hasPlayedEntranceRef.current) {
+        headerOpacity.value = withTiming(1, { duration: 150 });
+        headerTranslateY.value = withTiming(0, { duration: 150 });
+        contentOpacity.value = withTiming(1, { duration: 150 });
+        contentTranslateY.value = withTiming(0, { duration: 150 });
+        categoryOpacities.value = categories.map(() => 1);
+        categoryScales.value = categories.map(() => 1);
+        return;
+      }
+
+      hasPlayedEntranceRef.current = true;
+
       // Reset animation values
       headerOpacity.value = 0;
       headerTranslateY.value = -30;
@@ -219,8 +232,13 @@ export default function Home() {
       </Animated.View>
 
       <View style={styles.backgroundContainer}>
+        <RNImageBackground
+          source={require('../../assets/main-bg.png')}
+          style={StyleSheet.absoluteFillObject}
+          resizeMode="cover"
+        />
         <Canvas style={styles.backgroundCanvas}>
-          <Image image={bg} x={0} y={0} width={width} height={900} fit="cover" />
+          {bg ? <Image image={bg} x={0} y={0} width={width} height={900} fit="cover" /> : null}
         </Canvas>
       </View>
 
@@ -250,7 +268,9 @@ export default function Home() {
             >
               <BlurView experimentalBlurMethod={'none'} intensity={25} style={styles.blurContainer} tint="dark">
                 <View style={styles.cardContent}>
-                  <Text style={styles.categoryText}>{getCategoryName(cat)}</Text>
+                  <Text style={styles.categoryText} numberOfLines={2} ellipsizeMode="tail">
+                    {getCategoryName(cat)}
+                  </Text>
                   <View style={styles.arrowButton}>
                     <ChevronDownIcon />
                   </View>
@@ -316,12 +336,14 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
+    zIndex: 0,
   },
   backgroundCanvas: {
     flex: 1,
   },
   scrollContainer: {
     flex: 1,
+    zIndex: 1,
   },
   scrollView: {
     flex: 1,
@@ -343,7 +365,7 @@ const styles = StyleSheet.create({
   },
   categoryCard: {
     marginBottom: 20,
-    height: 70,
+    minHeight: 78,
     overflow: 'hidden',
     borderRadius: 12,
   },
@@ -357,19 +379,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
+    paddingHorizontal: 18,
     backgroundColor: 'rgba(255, 255, 255, 0.07)',
   },
   categoryText: {
     color: '#fff',
     fontSize: 13,
+    lineHeight: 18,
     fontFamily: 'Cinzel_600SemiBold',
     flex: 1,
+    flexShrink: 1,
+    marginRight: 14,
   },
   arrowButton: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
     alignItems: 'center',
     justifyContent: 'center',

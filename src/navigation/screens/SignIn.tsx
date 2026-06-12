@@ -17,6 +17,7 @@ import { Input } from '../../components/Input';
 import { PasswordInput } from '../../components/PasswordInput';
 import { useSignIn } from '../../hooks/useSignIn';
 import { useAppNavigation } from '../../hooks/useAppNavigation';
+import { useSharedAccessStore } from '../../store/sharedAccessStore';
 import { useTrialStore } from '../../store/trialStore';
 
 export function SignIn() {
@@ -40,7 +41,7 @@ export function SignIn() {
       },
       {
         onSuccess: () => {
-          if (isTrialExpired()) {
+          if (!useSharedAccessStore.getState().isSharedAccessActive && isTrialExpired()) {
             navigateToTrialExpired();
             return;
           }

@@ -43,9 +43,16 @@ import LinkIcon from '../../assets/icons/link';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const CARD_WIDTH = SCREEN_WIDTH * 0.6;
+const CARD_HEIGHT = 280;
+
+const getDayTitleFontSize = (title: string): number => {
+  if (title.length > 34) return 20;
+  if (title.length > 22) return 23;
+  return 28;
+};
 
 export const FortyDay = () => {
-  const { raw: navigation, navigateToHelpSupport, navigateToTemptationDetails } = useAppNavigation();
+  const { raw: navigation, navigateToTemptationDetails } = useAppNavigation();
   const insets = useSafeAreaInsets();
   
   const { 
@@ -60,8 +67,10 @@ export const FortyDay = () => {
 
   const hasFullAccess = useHasFullAccess();
   const [subscriptionPopupVisible, setSubscriptionPopupVisible] = useState(false);
+  const [isDayTransitioning, setIsDayTransitioning] = useState(false);
 
   const carouselRef = useRef<ICarouselInstance | null>(null);
+  const dayTransitionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [activeIndex, setActiveIndex] = useState(() => {
     if (days.length === 0) return 0;
     return Math.max(0, Math.min(currentDay - 1, days.length - 1));
@@ -74,13 +83,32 @@ export const FortyDay = () => {
   const headerOpacity = useSharedValue(0);
   const headerTranslateY = useSharedValue(-30);
   const scrollY = useSharedValue(0);
+  const hasPlayedEntranceRef = useRef(false);
 
   useEffect(() => {
     loadFortyDayContent();
   }, []);
 
+  useEffect(() => {
+    return () => {
+      if (dayTransitionTimeoutRef.current) {
+        clearTimeout(dayTransitionTimeoutRef.current);
+      }
+    };
+  }, []);
+
   useFocusEffect(
     React.useCallback(() => {
+      if (hasPlayedEntranceRef.current) {
+        headerOpacity.value = withTiming(1, { duration: 150 });
+        headerTranslateY.value = withTiming(0, { duration: 150 });
+        contentOpacity.value = withTiming(1, { duration: 150 });
+        contentTranslateY.value = withTiming(0, { duration: 150 });
+        return;
+      }
+
+      hasPlayedEntranceRef.current = true;
+
       headerOpacity.value = 0;
       headerTranslateY.value = -30;
       contentOpacity.value = 0;
@@ -166,15 +194,34 @@ export const FortyDay = () => {
 
   const currentDayData = days[activeIndex];
 
+  const selectDayIndex = (index: number) => {
+    if (index < 0 || index >= days.length || index === activeIndex) {
+      return;
+    }
+
+    if (dayTransitionTimeoutRef.current) {
+      clearTimeout(dayTransitionTimeoutRef.current);
+    }
+
+    setIsDayTransitioning(true);
+    setActiveIndex(index);
+    setCurrentDay(days[index].day);
+    (carouselRef.current as any)?.scrollTo?.({ index, animated: true });
+
+    dayTransitionTimeoutRef.current = setTimeout(() => {
+      setIsDayTransitioning(false);
+    }, 220);
+  };
+
   const handlePrevious = () => {
     if (activeIndex > 0) {
-      carouselRef.current?.prev();
+      selectDayIndex(activeIndex - 1);
     }
   };
 
   const handleNext = () => {
     if (activeIndex < days.length - 1) {
-      carouselRef.current?.next();
+      selectDayIndex(activeIndex + 1);
     }
   };
 
@@ -186,7 +233,18 @@ export const FortyDay = () => {
       setSubscriptionPopupVisible(true);
       return;
     }
+    if (!currentDayData) {
+      return;
+    }
     toggleTask(currentDayData.day, taskId);
+  };
+
+  const handleTaskPress = (task: Task) => {
+    if (task.contentId) {
+      handleOpenTaskContent(task);
+      return;
+    }
+    handleTaskToggle(task.id);
   };
 
   const handleOpenTaskContent = (task: Task) => {
@@ -222,6 +280,7 @@ export const FortyDay = () => {
   const renderCarouselItem = ({ item }: { item: typeof days[0] }) => {
     const isCurrentItem = item.day === days[activeIndex]?.day;
     const isLocked = !hasFullAccess;
+    const dayTitleFontSize = getDayTitleFontSize(item.title);
 
     const cardContent = (
       <View style={styles.card}>
@@ -234,12 +293,11 @@ export const FortyDay = () => {
         <View style={styles.cardContentWrapper}>
           <View style={styles.cardHeader}>
             {!isLocked && (
-              <TouchableOpacity
+              <View
                 style={styles.flagButton}
-                onPress={() => navigateToHelpSupport({})}
               >
                 <FlagIcon width={30} height={30} />
-              </TouchableOpacity>
+              </View>
             )}
             {isLocked && (
               <View style={styles.lockIconBadge}>
@@ -249,7 +307,19 @@ export const FortyDay = () => {
           </View>
 
           <View style={styles.cardContent}>
-            <Text style={[styles.dayLabel, isLocked && styles.dayTextLocked]}>{item.title}</Text>
+            <View style={styles.dayTitleArea}>
+              <Text
+                style={[
+                  styles.dayLabel,
+                  { fontSize: dayTitleFontSize, lineHeight: dayTitleFontSize * 1.12 },
+                  isLocked && styles.dayTextLocked,
+                ]}
+                numberOfLines={3}
+                ellipsizeMode="tail"
+              >
+                {item.title}
+              </Text>
+            </View>
             <Text style={[styles.dayNumber, isLocked && styles.dayTextLocked]}>{item.day}</Text>
             <Text style={styles.completionText}>
               Completed: <Text style={styles.completionPercentage}>{item.completionPercentage}%</Text>
@@ -395,12 +465,16 @@ export const FortyDay = () => {
                 <Carousel
                   ref={carouselRef}
                   width={CARD_WIDTH}
-                  height={280}
+                  height={CARD_HEIGHT}
                   data={days}
                   renderItem={renderCarouselItem}
                   onSnapToItem={(index) => {
+                    if (dayTransitionTimeoutRef.current) {
+                      clearTimeout(dayTransitionTimeoutRef.current);
+                    }
                     setActiveIndex(index);
                     setCurrentDay(days[index].day);
+                    setIsDayTransitioning(false);
                   }}
                   defaultIndex={days.length > 0 ? Math.max(0, Math.min(currentDay - 1, days.length - 1)) : 0}
                   loop={false}
@@ -427,18 +501,21 @@ export const FortyDay = () => {
               <Text style={styles.tasksTitle}>Tasks for today</Text>
               
               <View style={styles.tasksList}>
-                {currentDayData?.tasks.map((task, index) => {
+                {isDayTransitioning ? (
+                  <View style={styles.tasksTransitionState}>
+                    <ActivityIndicator size="small" color="#8B5CF6" />
+                    <Text style={styles.tasksTransitionText}>Loading tasks...</Text>
+                  </View>
+                ) : currentDayData?.tasks.map((task, index) => {
                   const isLinked = !!task.contentId;
 
                   const linkRow = isLinked ? (
-                    <Pressable
+                    <View
                       style={styles.taskLinkRow}
-                      onPress={() => handleOpenTaskContent(task)}
-                      hitSlop={8}
                     >
                       <LinkIcon width={14} height={14} color="#8B5CF6" />
                       <Text style={styles.taskLinkText}>Tap to open temptation</Text>
-                    </Pressable>
+                    </View>
                   ) : null;
 
                   const chevron = isLinked ? (
@@ -457,7 +534,7 @@ export const FortyDay = () => {
                     <Pressable
                       key={task.id}
                       style={styles.taskItemWrapper}
-                      onPress={() => handleTaskToggle(task.id)}
+                      onPress={() => handleTaskPress(task)}
                     >
                       {task.completed ? (
                         <ImageBackground
@@ -470,21 +547,28 @@ export const FortyDay = () => {
                               <Image source={taskIconSource} style={styles.ravenIcon} />
                             </View>
                             <View style={styles.taskTextContainer}>
-                              <Text style={styles.taskTitle}>{task.title}</Text>
+                              <Text style={styles.taskTitle} numberOfLines={2} ellipsizeMode="tail">
+                                {task.title}
+                              </Text>
                               {linkRow}
                             </View>
                           </View>
 
                           <View style={styles.taskRight}>
                             {chevron}
-                            <View
+                            <Pressable
                               style={[
                                 styles.checkbox,
                                 styles.checkboxCompleted,
                               ]}
+                              onPress={(event) => {
+                                event.stopPropagation();
+                                handleTaskToggle(task.id);
+                              }}
+                              hitSlop={10}
                             >
                               <CheckmarkIcon width={20} height={20} color="#FFFFFF" />
-                            </View>
+                            </Pressable>
                           </View>
                         </ImageBackground>
                       ) : (
@@ -494,14 +578,23 @@ export const FortyDay = () => {
                               <Image source={taskIconSource} style={styles.ravenIcon} />
                             </View>
                             <View style={styles.taskTextContainer}>
-                              <Text style={styles.taskTitle}>{task.title}</Text>
+                              <Text style={styles.taskTitle} numberOfLines={2} ellipsizeMode="tail">
+                                {task.title}
+                              </Text>
                               {linkRow}
                             </View>
                           </View>
 
                           <View style={styles.taskRight}>
                             {chevron}
-                            <View style={styles.checkbox} />
+                            <Pressable
+                              style={styles.checkbox}
+                              onPress={(event) => {
+                                event.stopPropagation();
+                                handleTaskToggle(task.id);
+                              }}
+                              hitSlop={10}
+                            />
                           </View>
                         </View>
                       )}
@@ -535,12 +628,14 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
+    zIndex: 0,
   },
   backgroundImage: {
     flex: 1,
   },
   scrollContainer: {
     flex: 1,
+    zIndex: 1,
   },
   scrollView: {
     flex: 1,
@@ -588,11 +683,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 30,
-    minHeight: 300,
+    minHeight: CARD_HEIGHT + 20,
   },
   carouselWrapper: {
     width: CARD_WIDTH,
-    minHeight: 280,
+    minHeight: CARD_HEIGHT,
   },
   carousel: {
     width: CARD_WIDTH,
@@ -623,7 +718,7 @@ const styles = StyleSheet.create({
   },
   card: {
     width: CARD_WIDTH,
-    minHeight: 280,
+    minHeight: CARD_HEIGHT,
     borderRadius: 20,
     overflow: 'hidden',
     position: 'relative',
@@ -669,23 +764,28 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   cardContent: {
-    flexShrink: 1,
+    flex: 1,
     justifyContent: 'flex-start',
-    paddingTop: 24,
-    paddingBottom: 8,
+    paddingTop: 22,
+    paddingBottom: 2,
     paddingHorizontal: 20,
+    paddingRight: 72,
+  },
+  dayTitleArea: {
+    minHeight: 68,
+    maxHeight: 68,
+    justifyContent: 'flex-start',
   },
   dayLabel: {
     fontFamily: 'Cinzel_600SemiBold',
     fontSize: 28,
     color: '#fff',
-    paddingBottom: 8,
   },
   dayNumber: {
     fontFamily: 'Cinzel_400Regular',
-    fontSize: 76,
+    fontSize: 66,
     color: '#fff',
-    lineHeight: 86,
+    lineHeight: 72,
   },
   dayTextLocked: {
     color: '#9CA3AF',
@@ -693,8 +793,8 @@ const styles = StyleSheet.create({
   completionText: {
     fontFamily: 'Roboto_400Regular',
     fontSize: 14,
+    lineHeight: 18,
     color: 'rgba(255, 255, 255, 0.6)',
-    marginBottom: 20,
   },
   completionPercentage: {
     color: '#fff',
@@ -703,8 +803,8 @@ const styles = StyleSheet.create({
   mediaControls: {
     justifyContent: 'center',
     alignItems: 'center',
-    minHeight: 88,
-    paddingBottom: 16,
+    minHeight: 72,
+    paddingBottom: 12,
     paddingHorizontal: 20,
   },
   audioControlsWrapper: {
@@ -714,7 +814,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 16,
+    gap: 14,
   },
   audioControlBtn: {
     justifyContent: 'center',
@@ -730,7 +830,7 @@ const styles = StyleSheet.create({
     fontFamily: 'Roboto_400Regular',
     fontSize: 13,
     color: 'rgba(255, 255, 255, 0.7)',
-    marginTop: 8,
+    marginTop: 6,
   },
   mediaIconAreaDisabled: {
     opacity: 0.3,
@@ -759,6 +859,22 @@ const styles = StyleSheet.create({
   },
   tasksList: {
   },
+  tasksTransitionState: {
+    minHeight: 74,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(139, 92, 246, 0.22)',
+    backgroundColor: 'rgba(139, 92, 246, 0.08)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  tasksTransitionText: {
+    fontFamily: 'Roboto_400Regular',
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.72)',
+  },
   taskItemWrapper: {
     marginBottom: 12,
   },
@@ -772,6 +888,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderWidth: 1,
     borderColor: 'rgba(139, 92, 246, 0.3)',
+    minHeight: 74,
   },
   taskItemCompleted: {
     backgroundColor: 'transparent',
@@ -784,11 +901,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
+    minWidth: 0,
   },
   taskRight: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+    flexShrink: 0,
   },
   taskLinkRow: {
     flexDirection: 'row',
@@ -820,10 +939,12 @@ const styles = StyleSheet.create({
   },
   taskTextContainer: {
     flex: 1,
+    minWidth: 0,
   },
   taskTitle: {
     fontFamily: 'Roboto_500Medium',
     fontSize: 16,
+    lineHeight: 21,
     color: '#fff',
     marginBottom: 4,
   },

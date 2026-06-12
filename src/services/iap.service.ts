@@ -15,6 +15,7 @@ import {
   endConnection,
   requestPurchase,
   getAvailablePurchases,
+  getActiveSubscriptions,
   purchaseUpdatedListener,
   purchaseErrorListener,
   finishTransaction,
@@ -34,6 +35,9 @@ export type SubscriptionProduct = {
   title?: string;
   description?: string;
 };
+
+export type SubscriptionPlan = 'monthly' | 'yearly';
+export type RestorePurchaseStatus = 'active' | 'previous-expired' | 'none';
 
 export type SubscriptionProducts = {
   monthly: SubscriptionProduct | null;
@@ -72,6 +76,14 @@ function getSubscriptionSkus(): string[] {
   return [monthly, yearly].filter((sku): sku is string => Boolean(sku));
 }
 
+function getPlanForProductId(productId?: string | null): SubscriptionPlan | null {
+  if (!productId) return null;
+  const { monthly, yearly } = getSubscriptionProductIds();
+  if (productId === monthly) return 'monthly';
+  if (productId === yearly) return 'yearly';
+  return null;
+}
+
 let purchaseResolve: ((value: boolean) => void) | null = null;
 let purchaseReject: ((reason: Error) => void) | null = null;
 
@@ -82,15 +94,43 @@ export function setSubscriptionUpdater(updater: (value: boolean) => void) {
 }
 
 async function hasActiveSubscription(): Promise<boolean> {
+  return (await getActiveSubscriptionPlan()) !== null;
+}
+
+async function getActiveSubscriptionPlan(): Promise<SubscriptionPlan | null> {
   try {
-    const purchases = await getAvailablePurchases();
-    if (!purchases || purchases.length === 0) return false;
     const skus = getSubscriptionSkus();
-    return purchases.some(
-      (p) => p.productId && skus.includes(p.productId)
+    if (skus.length === 0) return null;
+
+    const activeSubscriptions = await getActiveSubscriptions(skus);
+    const activeSubscription = activeSubscriptions.find(
+      (subscription: any) =>
+        subscription?.isActive !== false &&
+        subscription?.productId &&
+        skus.includes(subscription.productId)
     );
+
+    return getPlanForProductId(activeSubscription?.productId);
   } catch {
-    return false;
+    return null;
+  }
+}
+
+async function getPreviousSubscriptionPlan(): Promise<SubscriptionPlan | null> {
+  try {
+    const skus = getSubscriptionSkus();
+    if (skus.length === 0) return null;
+
+    const purchases = await getAvailablePurchases();
+    const previousPurchase = purchases.find((purchase: any) => {
+      const productId = purchase?.productId ?? purchase?.id;
+      return productId && skus.includes(productId);
+    });
+
+    const productId = (previousPurchase as any)?.productId ?? (previousPurchase as any)?.id;
+    return getPlanForProductId(productId);
+  } catch {
+    return null;
   }
 }
 
@@ -187,6 +227,31 @@ export const iapService = {
     } catch {
       return false;
     }
+  },
+
+  async getActiveSubscriptionPlan(): Promise<SubscriptionPlan | null> {
+    return getActiveSubscriptionPlan();
+  },
+
+  async getPreviousSubscriptionPlan(): Promise<SubscriptionPlan | null> {
+    if (Platform.OS === 'web') {
+      return null;
+    }
+    return getPreviousSubscriptionPlan();
+  },
+
+  async getRestorePurchaseStatus(): Promise<RestorePurchaseStatus> {
+    if (Platform.OS === 'web') {
+      return 'none';
+    }
+
+    const activePlan = await getActiveSubscriptionPlan();
+    if (activePlan) {
+      return 'active';
+    }
+
+    const previousPlan = await getPreviousSubscriptionPlan();
+    return previousPlan ? 'previous-expired' : 'none';
   },
 
   async purchaseSubscription(productId: string): Promise<boolean> {

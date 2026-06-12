@@ -1,10 +1,26 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { SubscriptionProducts } from '../services/iap.service';
+import type { RestorePurchaseStatus, SubscriptionPlan, SubscriptionProducts } from '../services/iap.service';
+
+async function syncCurrentUserSubscriptionStatus(isSubscribed: boolean): Promise<void> {
+  try {
+    const [{ getCurrentUser }, { userProfileService }] = await Promise.all([
+      import('../services/auth.service'),
+      import('../services/userProfile.service'),
+    ]);
+    const user = await getCurrentUser();
+    if (user) {
+      await userProfileService.syncSubscriptionStatus(user.$id, isSubscribed);
+    }
+  } catch {
+    // Subscription access should not be blocked by profile sync failures.
+  }
+}
 
 interface SubscriptionState {
   isSubscribed: boolean;
+  activePlan: SubscriptionPlan | null;
   isLoading: boolean;
   error: string | null;
   products: SubscriptionProducts;
@@ -14,6 +30,8 @@ interface SubscriptionState {
   loadProducts: () => Promise<void>;
   purchaseSubscription: (productId: string) => Promise<boolean>;
   restorePurchases: () => Promise<boolean>;
+  getRestorePurchaseStatus: () => Promise<RestorePurchaseStatus>;
+  resetSubscriptionState: () => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
 }
@@ -22,6 +40,7 @@ export const useSubscriptionStore = create<SubscriptionState>()(
   persist(
     (set, get) => ({
       isSubscribed: false,
+      activePlan: null,
       isLoading: false,
       error: null,
       products: { monthly: null, yearly: null },
@@ -40,7 +59,12 @@ export const useSubscriptionStore = create<SubscriptionState>()(
       },
 
       setSubscribed: (value: boolean) => {
-        set({ isSubscribed: value, error: null });
+        set({ isSubscribed: value, activePlan: value ? get().activePlan : null, error: null });
+        syncCurrentUserSubscriptionStatus(value);
+      },
+
+      resetSubscriptionState: () => {
+        set({ isSubscribed: false, activePlan: null, isLoading: false, error: null });
       },
 
       setLoading: (loading: boolean) => {
@@ -56,7 +80,9 @@ export const useSubscriptionStore = create<SubscriptionState>()(
         set({ isLoading: true, error: null });
         try {
           const isSubscribed = await iapService.checkSubscription();
-          set({ isSubscribed, isLoading: false, error: null });
+          const activePlan = isSubscribed ? await iapService.getActiveSubscriptionPlan() : null;
+          set({ isSubscribed, activePlan, isLoading: false, error: null });
+          syncCurrentUserSubscriptionStatus(isSubscribed);
         } catch (err) {
           const message = err instanceof Error ? err.message : 'Failed to check subscription';
           set({ isLoading: false, error: message });
@@ -69,7 +95,10 @@ export const useSubscriptionStore = create<SubscriptionState>()(
         try {
           const success = await iapService.purchaseSubscription(productId);
           if (success) {
-            set({ isSubscribed: true, isLoading: false, error: null });
+            const { monthly, yearly } = await import('../services/iap.service').then((m) => m.getIAPProductIds());
+            const activePlan = productId === yearly ? 'yearly' : productId === monthly ? 'monthly' : null;
+            set({ isSubscribed: true, activePlan, isLoading: false, error: null });
+            syncCurrentUserSubscriptionStatus(true);
           } else {
             set({ isLoading: false });
           }
@@ -87,7 +116,9 @@ export const useSubscriptionStore = create<SubscriptionState>()(
         try {
           const success = await iapService.restorePurchases();
           if (success) {
-            set({ isSubscribed: true, isLoading: false, error: null });
+            const activePlan = await iapService.getActiveSubscriptionPlan();
+            set({ isSubscribed: true, activePlan, isLoading: false, error: null });
+            syncCurrentUserSubscriptionStatus(true);
           } else {
             set({ isLoading: false });
           }
@@ -98,11 +129,16 @@ export const useSubscriptionStore = create<SubscriptionState>()(
           return false;
         }
       },
+
+      getRestorePurchaseStatus: async (): Promise<RestorePurchaseStatus> => {
+        const { iapService } = await import('../services/iap.service');
+        return iapService.getRestorePurchaseStatus();
+      },
     }),
     {
       name: 'subscription-storage',
       storage: createJSONStorage(() => AsyncStorage),
-      partialize: (state) => ({ isSubscribed: state.isSubscribed }),
+      partialize: (state) => ({ isSubscribed: state.isSubscribed, activePlan: state.activePlan }),
     }
   )
 );
