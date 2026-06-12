@@ -125,7 +125,7 @@ export const CustomDrawerContent = (props: any) => {
   };
 
   return (
-    <View style={styles.container} testID="drawer-content">
+    <View style={styles.container}>
       <DrawerContentScrollView
         {...props}
         contentContainerStyle={styles.scrollContent}
@@ -135,7 +135,6 @@ export const CustomDrawerContent = (props: any) => {
           <TouchableOpacity
             style={styles.backButton}
             onPress={handleCloseDrawer}
-            testID="back-button"
           >
             <ArrowLeftIcon color="#fff" width={18} height={14} />
           </TouchableOpacity>

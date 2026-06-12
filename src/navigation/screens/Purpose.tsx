@@ -62,7 +62,7 @@ export function Purpose() {
       </Canvas>
       <SafeAreaView style={styles.safeArea}>
           <View style={styles.header}>
-            <TouchableOpacity onPress={() => navigation.goBack()} testID="back-button">
+            <TouchableOpacity onPress={() => navigation.goBack()}>
               <ArrowLeftIcon />
             </TouchableOpacity>
             <Text style={styles.headerTitle}>Nevermore</Text>
@@ -88,7 +88,6 @@ export function Purpose() {
                   selectedPurpose === 'seek-help' && styles.selectedCard
                 ]}
                 onPress={() => handlePurposeSelect('seek-help')}
-                testID="purpose-option-recovery"
               >
                 <Image
                   source={require('../../assets/patient-bg.png')}
@@ -110,7 +109,6 @@ export function Purpose() {
                   selectedPurpose === 'help-someone' && styles.selectedCard
                 ]}
                 onPress={() => handlePurposeSelect('help-someone')}
-                testID="purpose-option-support"
               >
                 <Image
                   source={require('../../assets/coach-bg.png')}
@@ -135,7 +133,6 @@ export function Purpose() {
               variant="primary"
               size="medium"
               disabled={!selectedPurpose}
-              testID="onboarding-continue"
             />
           </View>
         </SafeAreaView>

@@ -153,7 +153,6 @@ export function SubscriptionPopup({
           if (!isSelected) setSelectedPlan(planType);
         }}
         disabled={isLoading || isSelected}
-        testID={`subscription-popup-plan-${planType}`}
       >
         <ImageBackground
           source={require('../assets/card-bg.png')}
@@ -173,10 +172,7 @@ export function SubscriptionPopup({
           </View>
           <View style={styles.planFooter}>
             <View style={styles.planSelection}>
-              <View
-                style={styles.radioButton}
-                testID={isSelected ? `subscription-popup-plan-radio-${planType}-selected` : undefined}
-              >
+              <View style={styles.radioButton}>
                 {isSelected && <View style={styles.radioButtonInner} />}
               </View>
               <Text style={styles.planLabel}>{planLabel}</Text>
@@ -208,14 +204,12 @@ export function SubscriptionPopup({
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.sheetContent} testID="subscription-popup">
         <View style={styles.header}>
           <Text style={styles.title}>Unlock full access</Text>
           <TouchableOpacity
             style={styles.closeButton}
             onPress={() => bottomSheetRef.current?.close()}
             activeOpacity={0.7}
-            testID="subscription-popup-close"
           >
             <Text style={styles.closeButtonText}>✕</Text>
           </TouchableOpacity>
@@ -242,17 +236,14 @@ export function SubscriptionPopup({
             size="medium"
             style={styles.subscribeButton}
             disabled={isLoading}
-            testID="subscription-popup-submit"
           />
           <TouchableOpacity
             style={styles.restoreButton}
             onPress={handleRestore}
             disabled={isLoading}
-            testID="subscription-popup-restore"
           >
             <Text style={styles.restoreButtonText}>Restore Purchases</Text>
           </TouchableOpacity>
-        </View>
         </View>
       </BottomSheetScrollView>
     </BottomSheet>
@@ -279,9 +270,6 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: 20,
     paddingBottom: 40,
-  },
-  sheetContent: {
-    flex: 1,
   },
   header: {
     flexDirection: 'row',

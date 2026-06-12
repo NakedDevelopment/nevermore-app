@@ -59,7 +59,7 @@ export function Permission() {
         <SafeAreaView style={styles.safeArea}>
           {/* Header */}
           <View style={styles.header}>
-            <TouchableOpacity onPress={handleBack} testID="back-button">
+            <TouchableOpacity onPress={handleBack}>
               <ArrowLeftIcon />
             </TouchableOpacity>
             <Text style={styles.headerTitle}>Nevermore</Text>
@@ -86,7 +86,6 @@ export function Permission() {
               onPress={handleNext}
               variant="primary"
               size="medium"
-              testID="onboarding-continue"
             />
           </View>
         </SafeAreaView>

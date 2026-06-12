@@ -92,7 +92,7 @@ export function SignUp() {
           >
             <ScrollView contentContainerStyle={styles.scrollContent}>
               <View style={styles.header}>
-                <TouchableOpacity onPress={goBack} testID="back-button">
+                <TouchableOpacity onPress={goBack}>
                   <ArrowLeftIcon />
                 </TouchableOpacity>
                 <Text style={styles.headerTitle}>Nevermore</Text>
@@ -113,7 +113,6 @@ export function SignUp() {
                   autoCorrect={false}
                   textContentType="username"
                   autoComplete="email"
-                  testID="signup-email"
                 />
 
                 <PasswordInput
@@ -125,7 +124,6 @@ export function SignUp() {
                   onTogglePassword={() => setShowPassword(!showPassword)}
                   autoCapitalize="none"
                   autoCorrect={false}
-                  testID="signup-password"
                 />
 
                 <PasswordInput
@@ -137,7 +135,6 @@ export function SignUp() {
                   onTogglePassword={() => setShowConfirmPassword(!showConfirmPassword)}
                   autoCapitalize="none"
                   autoCorrect={false}
-                  testID="signup-confirm-password"
                 />
 
                 {isEmailValid && (
@@ -183,7 +180,6 @@ export function SignUp() {
                   style={styles.termsContainer}
                   onPress={() => setAgreeToTerms(!agreeToTerms)}
                   activeOpacity={1}
-                  testID="signup-terms-checkbox"
                 >
                   <View style={[styles.checkbox, agreeToTerms && styles.checkboxChecked]}>
                     {agreeToTerms && (

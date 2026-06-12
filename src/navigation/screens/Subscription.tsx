@@ -171,7 +171,6 @@ export function Subscription() {
           if (!isSelected) setSelectedPlan(planType);
         }}
         disabled={isLoading || isSelected}
-        testID={`plan-card-${planType}`}
       >
         <ImageBackground
           source={require('../../assets/card-bg.png')}
@@ -199,10 +198,7 @@ export function Subscription() {
 
           <View style={styles.planFooter}>
             <View style={styles.planSelection}>
-              <View
-                style={[styles.radioButton]}
-                testID={isSelected ? `plan-radio-${planType}-selected` : `plan-radio-${planType}`}
-              >
+              <View style={[styles.radioButton]}>
                 {isSelected && <View style={styles.radioButtonInner} />}
               </View>
               <Text style={styles.planLabel}>{planLabel}</Text>
@@ -232,7 +228,7 @@ export function Subscription() {
       <SafeAreaView style={styles.safeArea}>
           {/* Header */}
           <View style={styles.header}>
-            <TouchableOpacity onPress={handleBack} testID="back-button">
+            <TouchableOpacity onPress={handleBack}>
               <ArrowLeftIcon />
             </TouchableOpacity>
             <Text style={styles.headerTitle}>Nevermore</Text>
@@ -311,13 +307,11 @@ export function Subscription() {
                     size="medium"
                     style={styles.subscribeButton}
                     disabled={isLoading}
-                    testID="subscription-submit"
                   />
                   <TouchableOpacity
                     style={styles.restoreButton}
                     onPress={handleRestore}
                     disabled={isLoading}
-                    testID="restore-purchases-btn"
                   >
                     <Text style={styles.restoreButtonText}>Restore Purchases</Text>
                   </TouchableOpacity>

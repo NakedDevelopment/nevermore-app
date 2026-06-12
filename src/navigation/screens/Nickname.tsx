@@ -96,7 +96,7 @@ export function Nickname() {
             style={styles.keyboardAvoidingView}
           >
             <View style={styles.header}>
-              <TouchableOpacity onPress={() => navigation.goBack()} testID="back-button">
+              <TouchableOpacity onPress={() => navigation.goBack()}>
                 <ArrowLeftIcon />
               </TouchableOpacity>
               <Text style={styles.headerTitle}>Nevermore</Text>
@@ -123,7 +123,6 @@ export function Nickname() {
                   autoFocus={true}
                   state={mappedInputState}
                   errorMessage={errorMessage}
-                  testID="nickname-input"
                 />
                 {storedPurpose === 'help-someone' && (
                   <Text style={styles.supportDescription}>
@@ -140,7 +139,6 @@ export function Nickname() {
                   size="medium"
                   disabled={!isNextEnabled || isLoading}
                   style={styles.nextButton}
-                  testID="onboarding-continue"
                 />
                 <SecondaryButton
                   title="Skip"
@@ -149,7 +147,6 @@ export function Nickname() {
                   disabled={isLoading}
                   style={styles.skipButton}
                   textStyle={styles.skipButtonText}
-                  testID="onboarding-skip"
                 />
               </View>
             </ScrollView>

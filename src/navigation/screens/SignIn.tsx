@@ -72,7 +72,7 @@ export function SignIn() {
             style={styles.keyboardAvoidingView}
           >
             <View style={styles.header}>
-                <TouchableOpacity onPress={goBack} testID="back-button">
+                <TouchableOpacity onPress={goBack}>
                   <ArrowLeftIcon />
               </TouchableOpacity>
               <Text style={styles.headerTitle}>Nevermore</Text>
@@ -92,7 +92,6 @@ export function SignIn() {
                 autoCorrect={false}
                 textContentType="username"
                 autoComplete="email"
-                testID="signin-email"
               />
 
               <PasswordInput
@@ -106,7 +105,6 @@ export function SignIn() {
                 autoCorrect={false}
                 textContentType="password"
                 autoComplete="password"
-                testID="signin-password"
               />
 
               <View style={styles.optionsContainer}>
@@ -128,7 +126,7 @@ export function SignIn() {
 
               {errorMessage !== '' && (
                 <View style={styles.errorContainer}>
-                  <Text style={styles.errorText} testID="signin-error">{errorMessage}</Text>
+                  <Text style={styles.errorText}>{errorMessage}</Text>
                 </View>
               )}
             </View>

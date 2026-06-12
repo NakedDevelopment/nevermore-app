@@ -103,13 +103,7 @@ export function TrialWelcome() {
         </View>
 
         <View style={styles.buttonContainer}>
-          <Button
-            title="Start my 3 free days"
-            onPress={handleStartSubscription}
-            variant="primary"
-            size="medium"
-            testID="trial-welcome-start"
-          />
+          <Button title="Start my 3 free days" onPress={handleStartSubscription} variant="primary" size="medium" />
           <SecondaryButton
             title="Not now"
             onPress={handleSkip}

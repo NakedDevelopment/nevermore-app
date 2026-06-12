@@ -300,7 +300,7 @@ export const FortyDay = () => {
               </View>
             )}
             {isLocked && (
-              <View style={styles.lockIconBadge} testID="day-lock-icon">
+              <View style={styles.lockIconBadge}>
                 <LockIcon width={24} height={24} color="#9CA3AF" />
               </View>
             )}
@@ -320,12 +320,7 @@ export const FortyDay = () => {
                 {item.title}
               </Text>
             </View>
-            <Text
-              style={[styles.dayNumber, isLocked && styles.dayTextLocked]}
-              testID={isCurrentItem ? `active-day-number-${item.day}` : undefined}
-            >
-              {item.day}
-            </Text>
+            <Text style={[styles.dayNumber, isLocked && styles.dayTextLocked]}>{item.day}</Text>
             <Text style={styles.completionText}>
               Completed: <Text style={styles.completionPercentage}>{item.completionPercentage}%</Text>
             </Text>
@@ -355,7 +350,6 @@ export const FortyDay = () => {
                     style={[styles.audioPlayBtn, !item.audioUrl && styles.mediaIconAreaDisabled]}
                     onPress={() => isCurrentItem && item.audioUrl && handlePlayPause(item.audioUrl)}
                     disabled={!item.audioUrl}
-                    testID={isCurrentItem ? 'audio-play-btn' : undefined}
                   >
                     {isCurrentItem && audioPlayer.isPlaying ? (
                       <PauseIcon width={36} height={36} />
@@ -390,7 +384,6 @@ export const FortyDay = () => {
             style={styles.cardTouchable}
             activeOpacity={0.9}
             onPress={() => setSubscriptionPopupVisible(true)}
-            testID="forty-day-carousel-item-locked"
           >
             {cardContent}
           </TouchableOpacity>
@@ -407,7 +400,6 @@ export const FortyDay = () => {
         <TouchableOpacity 
           style={styles.menuButton}
           onPress={() => navigation.dispatch(DrawerActions.openDrawer())}
-          testID="drawer-menu-button"
         >
           <MenuIcon />
         </TouchableOpacity>
@@ -447,7 +439,6 @@ export const FortyDay = () => {
             <TouchableOpacity 
               style={styles.retryButton}
               onPress={loadFortyDayContent}
-              testID="forty-day-retry-btn"
             >
               <Text style={styles.retryButtonText}>Retry</Text>
             </TouchableOpacity>
@@ -466,13 +457,11 @@ export const FortyDay = () => {
                 onPress={handlePrevious}
                 disabled={activeIndex === 0}
                 activeOpacity={activeIndex === 0 ? 1 : 0.7}
-                testID="forty-day-prev-btn"
-                accessibilityValue={{ text: activeIndex === 0 ? 'disabled' : 'enabled' }}
               >
                 <ChevronLeftIcon width={24} height={24} />
               </TouchableOpacity>
 
-              <View style={styles.carouselWrapper} testID="forty-day-carousel">
+              <View style={styles.carouselWrapper}>
                 <Carousel
                   ref={carouselRef}
                   width={CARD_WIDTH}
@@ -503,8 +492,6 @@ export const FortyDay = () => {
                 onPress={handleNext}
                 disabled={activeIndex >= days.length - 1}
                 activeOpacity={activeIndex >= days.length - 1 ? 1 : 0.7}
-                testID="forty-day-next-btn"
-                accessibilityValue={{ text: activeIndex >= days.length - 1 ? 'disabled' : 'enabled' }}
               >
                 <ChevronRightIcon width={24} height={24} />
               </TouchableOpacity>
@@ -548,7 +535,6 @@ export const FortyDay = () => {
                       key={task.id}
                       style={styles.taskItemWrapper}
                       onPress={() => handleTaskPress(task)}
-                      testID={`task-item-${index}`}
                     >
                       {task.completed ? (
                         <ImageBackground
@@ -580,7 +566,6 @@ export const FortyDay = () => {
                                 handleTaskToggle(task.id);
                               }}
                               hitSlop={10}
-                              testID={`task-checkbox-completed-${index}`}
                             >
                               <CheckmarkIcon width={20} height={20} color="#FFFFFF" />
                             </Pressable>
@@ -609,7 +594,6 @@ export const FortyDay = () => {
                                 handleTaskToggle(task.id);
                               }}
                               hitSlop={10}
-                              testID={`task-checkbox-${index}`}
                             />
                           </View>
                         </View>

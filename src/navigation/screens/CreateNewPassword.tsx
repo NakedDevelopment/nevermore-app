@@ -118,7 +118,7 @@ export const CreateNewPassword: React.FC = () => {
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           >
             <View style={styles.header}>
-              <TouchableOpacity onPress={handleBack} style={styles.backButton} testID="back-button">
+              <TouchableOpacity onPress={handleBack} style={styles.backButton}>
                 <ArrowLeftIcon width={24} height={24} color="#ffffff" />
               </TouchableOpacity>
               <Text style={styles.headerTitle}>Nevermore</Text>
@@ -137,7 +137,6 @@ export const CreateNewPassword: React.FC = () => {
                 onTogglePassword={() => setShowPassword(!showPassword)}
                 autoCapitalize="none"
                 autoCorrect={false}
-                testID="reset-password-new"
               />
 
               <PasswordInput
@@ -150,7 +149,6 @@ export const CreateNewPassword: React.FC = () => {
                 autoCapitalize="none"
                 autoCorrect={false}
                 containerStyle={passwordsMatch ? styles.passwordMatchContainer : undefined}
-                testID="reset-password-confirm"
               />
 
               {errorMessage !== '' && (
@@ -203,7 +201,6 @@ export const CreateNewPassword: React.FC = () => {
                 disabled={!isValidPassword}
                 style={styles.createButton}
                 size="large"
-                testID="reset-password-submit"
               />
             </View>
           </KeyboardAvoidingView>
