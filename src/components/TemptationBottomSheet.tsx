@@ -1,4 +1,8 @@
-import BottomSheet, { BottomSheetBackdrop, BottomSheetView } from '@gorhom/bottom-sheet';
+import BottomSheet, {
+  BottomSheetBackdrop,
+  BottomSheetScrollView,
+  BottomSheetView,
+} from '@gorhom/bottom-sheet';
 import React, { useCallback, useMemo, useRef } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View, ImageBackground } from 'react-native';
 import Animated, {
@@ -206,7 +210,12 @@ export const TemptationBottomSheet: React.FC<TemptationBottomSheetProps> = ({
           </TouchableOpacity>
         </View>
 
-        <View style={styles.itemsContainer}>
+        <BottomSheetScrollView
+          style={styles.itemsScrollView}
+          contentContainerStyle={styles.itemsContainer}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
           {items.map((item, index) => (
             <AnimatedTemptationItem
               key={item.id}
@@ -216,7 +225,7 @@ export const TemptationBottomSheet: React.FC<TemptationBottomSheetProps> = ({
               isLocked={!hasFullAccess}
             />
           ))}
-        </View>
+        </BottomSheetScrollView>
       </BottomSheetView>
     </BottomSheet>
   );
@@ -271,8 +280,12 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
   },
+  itemsScrollView: {
+    flex: 1,
+  },
   itemsContainer: {
     paddingTop: 10,
+    paddingBottom: 32,
   },
   itemButton: {
     marginBottom: 12,
