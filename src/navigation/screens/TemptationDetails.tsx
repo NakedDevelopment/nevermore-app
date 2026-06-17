@@ -98,15 +98,17 @@ export default function TemptationDetails() {
     audioFiles,
   } = useContentPresentation(content, activeButton);
   
-  // Load main content audio when URL changes or when switching tabs
+  const isActiveMainTrack = !!mainContentURL && mainContentAudioPlayer.currentUri === mainContentURL;
+
+  // Preload main content audio only when it will not interrupt an active track.
+  // This keeps temptation playback alive while users move between tabs/screens;
+  // a new track replaces the old one only when the user explicitly presses Play.
   React.useEffect(() => {
-    if (mainContentURL) {
+    if (mainContentURL && !mainContentAudioPlayer.isPlaying) {
       mainContentAudioPlayer.loadAudio(mainContentURL);
-    } else {
-      mainContentAudioPlayer.unloadAudio();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mainContentURL, activeButton]);
+  }, [mainContentURL]);
   
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   
@@ -174,10 +176,10 @@ export default function TemptationDetails() {
   // via the provider's global one-stream guard). Pausing reflection up front
   // keeps the local one-stream behavior even before loadAndPlay resolves.
   const handleMainPlayPause = React.useCallback(async () => {
-    if (mainContentAudioPlayer.isLoading) {
+    if (isActiveMainTrack && mainContentAudioPlayer.isLoading) {
       return;
     }
-    if (mainContentAudioPlayer.isPlaying) {
+    if (isActiveMainTrack && mainContentAudioPlayer.isPlaying) {
       await mainContentAudioPlayer.pause();
       return;
     }
@@ -186,7 +188,7 @@ export default function TemptationDetails() {
     }
     await reflectionAudioPlayer.pause();
     await mainContentAudioPlayer.loadAndPlay(mainContentURL);
-  }, [mainContentAudioPlayer, reflectionAudioPlayer, mainContentURL]);
+  }, [isActiveMainTrack, mainContentAudioPlayer, reflectionAudioPlayer, mainContentURL]);
 
   const handleQuestionSelect = React.useCallback(
     async (index: number) => {
@@ -205,10 +207,6 @@ export default function TemptationDetails() {
 
   const handleButtonPress = (buttonId: 'recovery' | 'support') => {
     setActiveButton(buttonId);
-    // Clear role-specific audio on tab change so Recovery clips cannot be
-    // reused or auto-played when Support becomes active (and vice versa).
-    void mainContentAudioPlayer.unloadAudio();
-    void reflectionAudioPlayer.unloadAudio();
   };
 
   const tabSwitcher = useTabSwitcher({
@@ -309,11 +307,11 @@ export default function TemptationDetails() {
 
         {mainContentURL && (
           <MediaControls
-            isPlaying={mainContentAudioPlayer.isPlaying}
-            isLoading={mainContentAudioPlayer.isLoading}
-            currentTime={mainContentAudioPlayer.currentTime}
-            totalTime={mainContentAudioPlayer.totalTime}
-            progress={mainContentAudioPlayer.progress}
+            isPlaying={isActiveMainTrack && mainContentAudioPlayer.isPlaying}
+            isLoading={isActiveMainTrack && mainContentAudioPlayer.isLoading}
+            currentTime={isActiveMainTrack ? mainContentAudioPlayer.currentTime : '00:00'}
+            totalTime={isActiveMainTrack ? mainContentAudioPlayer.totalTime : '--:--'}
+            progress={isActiveMainTrack ? mainContentAudioPlayer.progress : 0}
             onPlayPause={handleMainPlayPause}
             onRewind={mainContentAudioPlayer.rewind}
             onForward={mainContentAudioPlayer.forward}

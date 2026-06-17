@@ -924,17 +924,17 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   soundWaveContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
+    width: 56,
+    height: 56,
+    borderRadius: 13,
     backgroundColor: '#000000',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    marginRight: 14,
   },
   ravenIcon: {
-    width: 36,
-    height: 36,
+    width: 46,
+    height: 46,
     resizeMode: 'contain',
   },
   taskTextContainer: {

@@ -42,6 +42,8 @@ export const useAuthStore = create<AuthState>((set) => ({
       useOnboardingStore.getState().setCurrentStep(ScreenNames.PERMISSION);
       await syncTrialFromUserProfile(user.$id);
       await useSharedAccessStore.getState().refreshSharedAccess();
+      await useBookmarkStore.getState().hydrateFromBackend();
+      await useFortyDayStore.getState().hydrateProgressFromBackend();
       await useSubscriptionStore.getState().checkSubscription();
       set({ user, isAuthenticated: true, isLoading: false });
     } catch (error: any) {
@@ -64,6 +66,8 @@ export const useAuthStore = create<AuthState>((set) => ({
       }
       await syncTrialFromUserProfile(user.$id, { backfillTrialIfMissing: true });
       await useSharedAccessStore.getState().refreshSharedAccess();
+      await useBookmarkStore.getState().hydrateFromBackend();
+      await useFortyDayStore.getState().hydrateProgressFromBackend();
       await useSubscriptionStore.getState().checkSubscription();
       // Mark onboarding as complete for existing users who sign in
       useOnboardingStore.getState().completeOnboarding();
@@ -129,6 +133,8 @@ export const useAuthStore = create<AuthState>((set) => ({
       if (user) {
         await syncTrialFromUserProfile(user.$id, { backfillTrialIfMissing: true });
         await useSharedAccessStore.getState().refreshSharedAccess();
+        await useBookmarkStore.getState().hydrateFromBackend();
+        await useFortyDayStore.getState().hydrateProgressFromBackend();
         await useSubscriptionStore.getState().checkSubscription();
         set({ user, isAuthenticated: true, isLoading: false });
       } else {
@@ -184,6 +190,8 @@ export const useAuthStore = create<AuthState>((set) => ({
       }
       await syncTrialFromUserProfile(user.$id, { backfillTrialIfMissing: true });
       await useSharedAccessStore.getState().refreshSharedAccess();
+      await useBookmarkStore.getState().hydrateFromBackend();
+      await useFortyDayStore.getState().hydrateProgressFromBackend();
       await useSubscriptionStore.getState().checkSubscription();
       // Mark onboarding as complete for magic URL login (existing users)
       useOnboardingStore.getState().completeOnboarding();

@@ -70,7 +70,7 @@ export function useFortyDay(): UseFortyDayReturn {
   const [error, setError] = useState<string | null>(null);
   
   // Get store methods
-  const { days, setDays, getCompletedTasks } = useFortyDayStore();
+  const { days, setDays, getCompletedTasks, hydrateProgressFromBackend } = useFortyDayStore();
 
   const fetchFortyDayData = useCallback(async () => {
     try {
@@ -83,6 +83,8 @@ export function useFortyDay(): UseFortyDayReturn {
         setError('No 40-day journey content found. Please add content with type "forty_day_journey".');
         return;
       }
+
+      await hydrateProgressFromBackend();
 
       // Get completed tasks from store to preserve user progress
       const completedTasks = getCompletedTasks();
@@ -101,7 +103,7 @@ export function useFortyDay(): UseFortyDayReturn {
     } finally {
       setLoading(false);
     }
-  }, [setDays, getCompletedTasks]);
+  }, [setDays, getCompletedTasks, hydrateProgressFromBackend]);
 
   useEffect(() => {
     fetchFortyDayData();

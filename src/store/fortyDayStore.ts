@@ -3,6 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { contentService, Content } from '../services/content.service';
 import { getFirstFileUrl, getFileUrl } from '../utils/storageUtils';
+import { userDataSyncService } from '../services/userDataSync.service';
 
 export interface Task {
   id: string;
@@ -44,6 +45,7 @@ interface FortyDayState {
   getCompletedTasks: () => Record<string, boolean>;
   resetProgress: () => void;
   clearProgress: () => void;
+  hydrateProgressFromBackend: () => Promise<void>;
   loadFortyDayContent: () => Promise<void>;
 }
 
@@ -88,6 +90,15 @@ const convertContentToTasks = (content: Content): Task[] => {
 
 const getTaskStorageKey = (day: number, taskId: string) => `day-${day}-task-${taskId}`;
 
+const syncFortyDayProgress = (currentDay: number, completedTasks: Record<string, boolean>) => {
+  void userDataSyncService
+    .updateSyncedUserData({
+      fortyDayCurrentDay: currentDay,
+      fortyDayCompletedTasks: completedTasks,
+    })
+    .catch((error) => console.warn('Failed to sync 40-day progress:', error));
+};
+
 export const useFortyDayStore = create<FortyDayState>()(
   persist(
     (set, get) => ({
@@ -100,6 +111,7 @@ export const useFortyDayStore = create<FortyDayState>()(
       setCurrentDay: (day: number) => {
         if (day >= 1 && day <= 40) {
           set({ currentDay: day });
+          syncFortyDayProgress(day, get().completedTasks);
         }
       },
 
@@ -139,6 +151,7 @@ export const useFortyDayStore = create<FortyDayState>()(
       },
       
       toggleTask: (day: number, taskId: string) => {
+        let nextCompletedTasks: Record<string, boolean> = {};
         set((state) => {
           const completedTaskMap = { ...(state.completedTasks || {}) };
           const days = state.days.map((d) => {
@@ -167,8 +180,10 @@ export const useFortyDayStore = create<FortyDayState>()(
             return d;
           });
 
+          nextCompletedTasks = completedTaskMap;
           return { days, completedTasks: completedTaskMap };
         });
+        syncFortyDayProgress(get().currentDay, nextCompletedTasks);
       },
       
       resetProgress: () => {
@@ -178,6 +193,7 @@ export const useFortyDayStore = create<FortyDayState>()(
           completedTasks: {},
           error: null,
         });
+        syncFortyDayProgress(1, {});
         get().loadFortyDayContent();
       },
 
@@ -188,10 +204,33 @@ export const useFortyDayStore = create<FortyDayState>()(
           completedTasks: {},
           error: null,
         });
+        syncFortyDayProgress(1, {});
+      },
+
+      hydrateProgressFromBackend: async () => {
+        try {
+          const syncedData = await userDataSyncService.getSyncedUserData();
+          const syncedCompletedTasks = syncedData.fortyDayCompletedTasks;
+          const syncedCurrentDay = syncedData.fortyDayCurrentDay;
+
+          set((state) => ({
+            completedTasks:
+              syncedCompletedTasks && typeof syncedCompletedTasks === 'object'
+                ? syncedCompletedTasks
+                : state.completedTasks,
+            currentDay:
+              typeof syncedCurrentDay === 'number' && syncedCurrentDay >= 1 && syncedCurrentDay <= 40
+                ? syncedCurrentDay
+                : state.currentDay,
+          }));
+        } catch (error) {
+          console.warn('Failed to hydrate 40-day progress:', error);
+        }
       },
 
       loadFortyDayContent: async () => {
         console.log('loadFortyDayContent called - fetching from Appwrite...');
+        await get().hydrateProgressFromBackend();
         const existingCompletedTasks = get().getCompletedTasks();
         set({ loading: true, error: null });
         

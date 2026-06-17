@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { userDataSyncService } from '../services/userDataSync.service';
 
 export interface Bookmark {
   id: string;
@@ -19,7 +20,14 @@ interface BookmarkState {
   clearBookmarks: () => void;
   setActiveTab: (tab: 'Recovery' | 'Support') => void;
   getFilteredBookmarks: (tab?: 'Recovery' | 'Support') => Bookmark[];
+  hydrateFromBackend: () => Promise<void>;
 }
+
+const syncBookmarks = (bookmarks: Bookmark[], activeTab: 'Recovery' | 'Support') => {
+  void userDataSyncService
+    .updateSyncedUserData({ bookmarks, bookmarkActiveTab: activeTab })
+    .catch((error) => console.warn('Failed to sync bookmarks:', error));
+};
 
 export const useBookmarkStore = create<BookmarkState>()(
   persist(
@@ -28,20 +36,26 @@ export const useBookmarkStore = create<BookmarkState>()(
       activeTab: 'Recovery',
       
       addBookmark: (id: string, title: string, role: string) => {
-        set((state) => ({
-          bookmarks: [
+        let nextBookmarks: Bookmark[] = [];
+        set((state) => {
+          nextBookmarks = [
             ...state.bookmarks,
             { id, title, timestamp: Date.now(), role }
-          ]
-        }));
+          ];
+          return { bookmarks: nextBookmarks };
+        });
+        syncBookmarks(nextBookmarks, get().activeTab);
       },
       
       removeBookmark: (id: string, role: string) => {
-        set((state) => ({
-          bookmarks: state.bookmarks.filter(
+        let nextBookmarks: Bookmark[] = [];
+        set((state) => {
+          nextBookmarks = state.bookmarks.filter(
             bookmark => !(bookmark.id === id && bookmark.role === role)
-          )
-        }));
+          );
+          return { bookmarks: nextBookmarks };
+        });
+        syncBookmarks(nextBookmarks, get().activeTab);
       },
       
       isBookmarked: (id: string, role: string) => {
@@ -61,10 +75,12 @@ export const useBookmarkStore = create<BookmarkState>()(
       
       clearBookmarks: () => {
         set({ bookmarks: [] });
+        syncBookmarks([], get().activeTab);
       },
 
       setActiveTab: (tab: 'Recovery' | 'Support') => {
         set({ activeTab: tab });
+        syncBookmarks(get().bookmarks, tab);
       },
 
       getFilteredBookmarks: (tab?: 'Recovery' | 'Support') => {
@@ -74,6 +90,20 @@ export const useBookmarkStore = create<BookmarkState>()(
           return !bookmark.role || bookmark.role.toLowerCase() === activeTab.toLowerCase();
         });
         return filtered;
+      },
+
+      hydrateFromBackend: async () => {
+        try {
+          const syncedData = await userDataSyncService.getSyncedUserData();
+          set((state) => ({
+            bookmarks: Array.isArray(syncedData.bookmarks)
+              ? syncedData.bookmarks
+              : state.bookmarks,
+            activeTab: syncedData.bookmarkActiveTab || state.activeTab,
+          }));
+        } catch (error) {
+          console.warn('Failed to hydrate bookmarks:', error);
+        }
       },
     }),
     {
