@@ -204,6 +204,7 @@ export const TemptationBottomSheet: React.FC<TemptationBottomSheetProps> = ({
       onChange={handleSheetChanges}
       backdropComponent={renderBackdrop}
       enablePanDownToClose
+      enableContentPanningGesture={false}
       backgroundStyle={styles.bottomSheetBackground}
       handleIndicatorStyle={styles.handleIndicator}
       style={styles.bottomSheet}
