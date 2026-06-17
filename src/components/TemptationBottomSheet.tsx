@@ -1,6 +1,6 @@
 import BottomSheet, {
   BottomSheetBackdrop,
-  BottomSheetScrollView,
+  BottomSheetFlatList,
   BottomSheetView,
 } from '@gorhom/bottom-sheet';
 import React, { useCallback, useMemo, useRef } from 'react';
@@ -176,6 +176,18 @@ export const TemptationBottomSheet: React.FC<TemptationBottomSheetProps> = ({
     [onItemSelect, onNavigate]
   );
 
+  const renderItem = useCallback(
+    ({ item, index }: { item: TemptationItem; index: number }) => (
+      <AnimatedTemptationItem
+        item={item}
+        index={index}
+        onPress={handleItemPress}
+        isLocked={!hasFullAccess}
+      />
+    ),
+    [handleItemPress, hasFullAccess]
+  );
+
   React.useEffect(() => {
     if (isVisible) {
       bottomSheetRef.current?.expand();
@@ -210,22 +222,16 @@ export const TemptationBottomSheet: React.FC<TemptationBottomSheetProps> = ({
           </TouchableOpacity>
         </View>
 
-        <BottomSheetScrollView
-          style={styles.itemsScrollView}
+        <BottomSheetFlatList
+          data={items}
+          keyExtractor={(item) => item.id}
+          renderItem={renderItem}
+          style={styles.itemsList}
           contentContainerStyle={styles.itemsContainer}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
-        >
-          {items.map((item, index) => (
-            <AnimatedTemptationItem
-              key={item.id}
-              item={item}
-              index={index}
-              onPress={handleItemPress}
-              isLocked={!hasFullAccess}
-            />
-          ))}
-        </BottomSheetScrollView>
+          nestedScrollEnabled
+        />
       </BottomSheetView>
     </BottomSheet>
   );
@@ -280,7 +286,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
   },
-  itemsScrollView: {
+  itemsList: {
     flex: 1,
   },
   itemsContainer: {
