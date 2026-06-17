@@ -212,8 +212,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 25,
     borderTopWidth: 1,
     borderTopColor: '#282828',
-    maxHeight: '75%',
-    minHeight: '42%',
+    height: '75%',
     overflow: 'hidden',
     paddingHorizontal: 20,
   },
@@ -230,7 +229,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: 20,
-    paddingTop: 24,
+    paddingTop: 30,
   },
   title: {
     color: '#FFFFFF',
@@ -252,7 +251,6 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 18,
     fontWeight: 'bold',
-    lineHeight: 22,
   },
   itemsList: {
     flex: 1,
