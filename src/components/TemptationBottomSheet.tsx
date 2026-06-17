@@ -1,13 +1,16 @@
-import BottomSheet, {
-  BottomSheetBackdrop,
-  BottomSheetFlatList,
-  BottomSheetView,
-} from '@gorhom/bottom-sheet';
-import React, { useCallback, useMemo, useRef } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View, ImageBackground } from 'react-native';
+import React, { useCallback } from 'react';
+import {
+  ImageBackground,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import Animated, {
-  useSharedValue,
   useAnimatedStyle,
+  useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
 import cardBg from '../assets/card-bg.png';
@@ -45,7 +48,7 @@ const AnimatedTemptationItem: React.FC<{
     fadeAnim.value = withTiming(1, { duration: 300 });
     scaleAnim.value = withTiming(1, { duration: 300 });
     translateYAnim.value = withTiming(0, { duration: 300 });
-  }, [index]);
+  }, [fadeAnim, index, scaleAnim, translateYAnim]);
 
   const handlePressIn = () => {
     pressScale.value = withTiming(0.98, { duration: 100 });
@@ -66,21 +69,17 @@ const AnimatedTemptationItem: React.FC<{
     }, 100);
   };
 
-  const animatedStyle = useAnimatedStyle(() => {
-    return {
-      opacity: fadeAnim.value,
-      transform: [
-        { scale: scaleAnim.value * pressScale.value },
-        { translateY: translateYAnim.value }
-      ],
-    };
-  });
+  const animatedStyle = useAnimatedStyle(() => ({
+    opacity: fadeAnim.value,
+    transform: [
+      { scale: scaleAnim.value * pressScale.value },
+      { translateY: translateYAnim.value },
+    ],
+  }));
 
-  const backgroundAnimatedStyle = useAnimatedStyle(() => {
-    return {
-      opacity: backgroundOpacity.value,
-    };
-  });
+  const backgroundAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: backgroundOpacity.value,
+  }));
 
   return (
     <Animated.View style={animatedStyle}>
@@ -131,37 +130,7 @@ export const TemptationBottomSheet: React.FC<TemptationBottomSheetProps> = ({
   onItemSelect,
   onNavigate,
 }) => {
-  const bottomSheetRef = useRef<BottomSheet>(null);
   const hasFullAccess = useHasFullAccess();
-
-  const snapPoints = useMemo(() => ['75%'], []);
-
-  const renderBackdrop = useCallback(
-    (props: any) => (
-      <BottomSheetBackdrop
-        {...props}
-        disappearsOnIndex={-1}
-        appearsOnIndex={0}
-        opacity={0.5}
-        onPress={() => {
-          bottomSheetRef.current?.close();
-        }}
-        style={[
-          props.style,
-          {
-            backgroundColor: 'rgba(0, 0, 0, 0.5)',
-          },
-        ]}
-      />
-    ),
-    []
-  );
-
-  const handleSheetChanges = useCallback((index: number) => {
-    if (index === -1) {
-      onClose();
-    }
-  }, [onClose]);
 
   const handleItemPress = useCallback(
     (item: TemptationItem) => {
@@ -170,101 +139,98 @@ export const TemptationBottomSheet: React.FC<TemptationBottomSheetProps> = ({
         if (onNavigate) {
           onNavigate(item);
         }
-        bottomSheetRef.current?.close();
+        onClose();
       }, 300);
     },
-    [onItemSelect, onNavigate]
+    [onClose, onItemSelect, onNavigate]
   );
-
-  const renderItem = useCallback(
-    ({ item, index }: { item: TemptationItem; index: number }) => (
-      <AnimatedTemptationItem
-        item={item}
-        index={index}
-        onPress={handleItemPress}
-        isLocked={!hasFullAccess}
-      />
-    ),
-    [handleItemPress, hasFullAccess]
-  );
-
-  React.useEffect(() => {
-    if (isVisible) {
-      bottomSheetRef.current?.expand();
-    } else {
-      bottomSheetRef.current?.close();
-    }
-  }, [isVisible]);
 
   return (
-    <BottomSheet
-      ref={bottomSheetRef}
-      index={-1}
-      snapPoints={snapPoints}
-      onChange={handleSheetChanges}
-      backdropComponent={renderBackdrop}
-      enablePanDownToClose
-      enableContentPanningGesture={false}
-      backgroundStyle={styles.bottomSheetBackground}
-      handleIndicatorStyle={styles.handleIndicator}
-      style={styles.bottomSheet}
+    <Modal
+      visible={isVisible}
+      transparent
+      animationType="slide"
+      statusBarTranslucent
+      onRequestClose={onClose}
     >
-      <BottomSheetView style={styles.contentContainer}>
-        <View style={styles.header}>
-          <Text style={styles.title}>{title}</Text>
-          <TouchableOpacity
-            style={styles.closeButton}
-            onPress={() => {
-              bottomSheetRef.current?.close();
-            }}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.closeButtonText}>✕</Text>
-          </TouchableOpacity>
-        </View>
-
-        <BottomSheetFlatList
-          data={items}
-          keyExtractor={(item) => item.id}
-          renderItem={renderItem}
-          style={styles.itemsList}
-          contentContainerStyle={styles.itemsContainer}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          nestedScrollEnabled
+      <View style={styles.modalRoot}>
+        <TouchableOpacity
+          style={styles.backdrop}
+          activeOpacity={1}
+          onPress={onClose}
         />
-      </BottomSheetView>
-    </BottomSheet>
+
+        <View style={styles.sheetPanel}>
+          <View style={styles.handleIndicator} />
+          <View style={styles.header}>
+            <Text style={styles.title}>{title}</Text>
+            <TouchableOpacity
+              style={styles.closeButton}
+              onPress={onClose}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.closeButtonText}>x</Text>
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView
+            style={styles.itemsList}
+            contentContainerStyle={styles.itemsContainer}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            nestedScrollEnabled
+            bounces
+          >
+            {items.map((item, index) => (
+              <AnimatedTemptationItem
+                key={item.id}
+                item={item}
+                index={index}
+                onPress={handleItemPress}
+                isLocked={!hasFullAccess}
+              />
+            ))}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
   );
 };
 
 const styles = StyleSheet.create({
-  bottomSheet: {
-    zIndex: 9999,
-    elevation: 9999,
+  modalRoot: {
+    flex: 1,
+    justifyContent: 'flex-end',
   },
-  bottomSheetBackground: {
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  sheetPanel: {
     backgroundColor: '#000000',
     borderTopLeftRadius: 25,
     borderTopRightRadius: 25,
     borderTopWidth: 1,
     borderTopColor: '#282828',
+    maxHeight: '75%',
+    minHeight: '42%',
+    overflow: 'hidden',
+    paddingHorizontal: 20,
   },
   handleIndicator: {
+    alignSelf: 'center',
     backgroundColor: '#666666',
     width: 40,
     height: 3,
-  },
-  contentContainer: {
-    flex: 1,
-    paddingHorizontal: 20,
+    borderRadius: 2,
+    marginTop: 10,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: 20,
-    paddingTop: 30,
+    paddingTop: 24,
   },
   title: {
     color: '#FFFFFF',
@@ -286,6 +252,7 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 18,
     fontWeight: 'bold',
+    lineHeight: 22,
   },
   itemsList: {
     flex: 1,
