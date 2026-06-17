@@ -54,7 +54,6 @@ export default function Home() {
 
   const hasFullAccess = useHasFullAccess();
   const [bottomSheetVisible, setBottomSheetVisible] = useState(false);
-  const [bottomSheetInstanceKey, setBottomSheetInstanceKey] = useState(0);
   const [subscriptionPopupVisible, setSubscriptionPopupVisible] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
   const [selectedTemptation, setSelectedTemptation] = useState<string>('');
@@ -67,7 +66,6 @@ export default function Home() {
   const categoryScales = useSharedValue<number[]>([]);
   const categoryOpacities = useSharedValue<number[]>([]);
   const hasPlayedEntranceRef = useRef(false);
-  const closeBottomSheetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (allContent.length === 0 || categories.length === 0) return;
@@ -96,15 +94,10 @@ export default function Home() {
   }, [allContent, categories, getCategoryName]);
 
   const handleCategoryPress = (category: Category, index: number) => {
-    if (closeBottomSheetTimeoutRef.current) {
-      clearTimeout(closeBottomSheetTimeoutRef.current);
-      closeBottomSheetTimeoutRef.current = null;
-    }
     categoryScales.value[index] = withTiming(0.98, { duration: 100 }, () => {
       categoryScales.value[index] = withTiming(1, { duration: 100 });
     });
     setSelectedCategory(category);
-    setBottomSheetInstanceKey((key) => key + 1);
     setBottomSheetVisible(true);
   };
 
@@ -136,19 +129,7 @@ export default function Home() {
 
   const handleCloseBottomSheet = () => {
     setBottomSheetVisible(false);
-    closeBottomSheetTimeoutRef.current = setTimeout(() => {
-      setSelectedCategory(null);
-      closeBottomSheetTimeoutRef.current = null;
-    }, 250);
   };
-
-  useEffect(() => {
-    return () => {
-      if (closeBottomSheetTimeoutRef.current) {
-        clearTimeout(closeBottomSheetTimeoutRef.current);
-      }
-    };
-  }, []);
 
   useEffect(() => {
     if (categories.length > 0) {
@@ -299,22 +280,16 @@ export default function Home() {
         </Animated.ScrollView>
       </Animated.View>
 
-      {selectedCategory ? (
-        <View
-          style={styles.bottomSheetWrapper}
-          pointerEvents={bottomSheetVisible ? 'auto' : 'box-none'}
-        >
-          <TemptationBottomSheet
-            key={bottomSheetInstanceKey}
-            isVisible={bottomSheetVisible}
-            onClose={handleCloseBottomSheet}
-            title={getCategoryName(selectedCategory)}
-            items={categoryContent[getCategoryName(selectedCategory)] || []}
-            onItemSelect={handleTemptationSelect}
-            onNavigate={handleNavigateToDetails}
-          />
-        </View>
-      ) : null}
+      <View style={styles.bottomSheetWrapper}>
+        <TemptationBottomSheet
+          isVisible={bottomSheetVisible}
+          onClose={handleCloseBottomSheet}
+          title={selectedCategory ? getCategoryName(selectedCategory) : ''}
+          items={selectedCategory ? categoryContent[getCategoryName(selectedCategory)] || [] : []}
+          onItemSelect={handleTemptationSelect}
+          onNavigate={handleNavigateToDetails}
+        />
+      </View>
 
       <SubscriptionPopup
         isVisible={subscriptionPopupVisible}
