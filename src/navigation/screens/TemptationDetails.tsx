@@ -99,6 +99,8 @@ export default function TemptationDetails() {
   } = useContentPresentation(content, activeButton);
   
   const isActiveMainTrack = !!mainContentURL && mainContentAudioPlayer.currentUri === mainContentURL;
+  const isMainTrackBuffering = !!mainContentURL && mainContentAudioPlayer.loadingUri === mainContentURL;
+  const isMainTrackActiveOrBuffering = isActiveMainTrack || isMainTrackBuffering;
 
   // Preload main content audio only when it will not interrupt an active track.
   // This keeps temptation playback alive while users move between tabs/screens;
@@ -176,7 +178,7 @@ export default function TemptationDetails() {
   // via the provider's global one-stream guard). Pausing reflection up front
   // keeps the local one-stream behavior even before loadAndPlay resolves.
   const handleMainPlayPause = React.useCallback(async () => {
-    if (isActiveMainTrack && mainContentAudioPlayer.isLoading) {
+    if (isMainTrackActiveOrBuffering && mainContentAudioPlayer.isLoading) {
       return;
     }
     if (isActiveMainTrack && mainContentAudioPlayer.isPlaying) {
@@ -188,7 +190,7 @@ export default function TemptationDetails() {
     }
     await reflectionAudioPlayer.pause();
     await mainContentAudioPlayer.loadAndPlay(mainContentURL);
-  }, [isActiveMainTrack, mainContentAudioPlayer, reflectionAudioPlayer, mainContentURL]);
+  }, [isActiveMainTrack, isMainTrackActiveOrBuffering, mainContentAudioPlayer, reflectionAudioPlayer, mainContentURL]);
 
   const handleQuestionSelect = React.useCallback(
     async (index: number) => {
@@ -308,7 +310,7 @@ export default function TemptationDetails() {
         {mainContentURL && (
           <MediaControls
             isPlaying={isActiveMainTrack && mainContentAudioPlayer.isPlaying}
-            isLoading={isActiveMainTrack && mainContentAudioPlayer.isLoading}
+            isLoading={isMainTrackActiveOrBuffering && mainContentAudioPlayer.isLoading}
             currentTime={isActiveMainTrack ? mainContentAudioPlayer.currentTime : '00:00'}
             totalTime={isActiveMainTrack ? mainContentAudioPlayer.totalTime : '--:--'}
             progress={isActiveMainTrack ? mainContentAudioPlayer.progress : 0}

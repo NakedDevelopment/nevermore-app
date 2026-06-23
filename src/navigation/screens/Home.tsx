@@ -4,13 +4,8 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { DrawerActions } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { BlurView } from 'expo-blur';
-import {
-  Canvas,
-  Image,
-  useImage,
-} from "@shopify/react-native-skia";
 import React, { useEffect, useRef, useState } from "react";
-import { Dimensions, ImageBackground as RNImageBackground, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ImageBackground as RNImageBackground, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useAnimatedScrollHandler,
@@ -185,8 +180,6 @@ export default function Home() {
     }, [categories, loading])
   );
 
-  const width = Dimensions.get('window').width;
-  const bg = useImage(require('../../assets/main-bg.png'));
   const insets = useSafeAreaInsets();
 
   const scrollHandler = useAnimatedScrollHandler({
@@ -236,9 +229,6 @@ export default function Home() {
           style={StyleSheet.absoluteFillObject}
           resizeMode="cover"
         />
-        <Canvas style={styles.backgroundCanvas}>
-          {bg ? <Image image={bg} x={0} y={0} width={width} height={900} fit="cover" /> : null}
-        </Canvas>
       </View>
 
       <Animated.View 
@@ -336,9 +326,6 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     zIndex: 0,
-  },
-  backgroundCanvas: {
-    flex: 1,
   },
   scrollContainer: {
     flex: 1,

@@ -1,5 +1,6 @@
-import { useAudioPlayer as useExpoAudioPlayer, AudioPlayer, AudioSource, setAudioModeAsync } from 'expo-audio';
+import { useAudioPlayer as useExpoAudioPlayer, AudioPlayer, AudioSource, setAudioModeAsync, setIsAudioActiveAsync } from 'expo-audio';
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { AppState } from 'react-native';
 import { audioCacheService } from '../services/audioCache.service';
 
 export type PlaybackSnapshot = {
@@ -11,6 +12,7 @@ export type PlaybackSnapshot = {
 export interface AudioChannel {
   isPlaying: boolean;
   isLoading: boolean;
+  loadingUri: string | null;
   currentTime: string;
   totalTime: string;
   progress: number;
@@ -45,6 +47,11 @@ type InternalAudioChannel = AudioChannel & {
 };
 
 const AudioPlayerContext = createContext<AudioPlayerContextValue | null>(null);
+let registeredStopAllAudio: (() => Promise<void>) | null = null;
+
+export async function stopAllAudioPlayback(): Promise<void> {
+  await registeredStopAllAudio?.();
+}
 
 const formatTime = (milliseconds: number): string => {
   if (!isFinite(milliseconds) || milliseconds < 0 || isNaN(milliseconds)) {
@@ -68,6 +75,16 @@ const isPlayerAtEnd = (player: AudioPlayer): boolean => {
   }
 };
 
+const configureBackgroundAudioSession = async () => {
+  await setAudioModeAsync({
+    playsInSilentMode: true,
+    shouldPlayInBackground: true,
+    interruptionMode: 'doNotMix',
+    interruptionModeAndroid: 'doNotMix',
+  });
+  await setIsAudioActiveAsync(true);
+};
+
 /**
  * Builds an audio channel backed by a persistent expo-audio player instance.
  * The player lives for the lifetime of the provider (mounted above navigation),
@@ -80,6 +97,7 @@ function useAudioChannel(
   onPlayStart: () => void
 ): InternalAudioChannel {
   const [isLoading, setIsLoading] = useState(false);
+  const [loadingUri, setLoadingUri] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [currentUri, setCurrentUri] = useState<string | null>(null);
@@ -88,6 +106,7 @@ function useAudioChannel(
   const [progress, setProgress] = useState(0);
   const previousVolumeRef = useRef<number>(1.0);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const operationIdRef = useRef(0);
 
   // Sync player state with React state
   useEffect(() => {
@@ -111,7 +130,7 @@ function useAudioChannel(
         } catch {
           // native player already released
         }
-      }, 100);
+      }, 250);
     } else {
       setIsPlaying(false);
       setCurrentTime('00:00');
@@ -128,6 +147,7 @@ function useAudioChannel(
   }, [currentUri]);
 
   const loadAudio = async (uri: string) => {
+    let operationId: number | null = null;
     try {
       if (!uri || uri.trim() === '') {
         return;
@@ -138,6 +158,7 @@ function useAudioChannel(
         return;
       }
 
+      operationId = ++operationIdRef.current;
       setIsLoading(true);
       setIsPlaying(false);
 
@@ -146,17 +167,21 @@ function useAudioChannel(
 
       // Get cached audio URI (downloads if not cached)
       const cachedUri = await audioCacheService.getAudioUri(uri);
+      if (operationId !== operationIdRef.current) return;
 
       const audioSource: AudioSource = { uri: cachedUri };
       await player.replace(audioSource);
+      if (operationId !== operationIdRef.current) return;
 
       // Wait for duration to be available
       let attempts = 0;
       const maxAttempts = 50; // 5 seconds max
       while ((!isFinite(player.duration) || player.duration === 0) && attempts < maxAttempts) {
+        if (operationId !== operationIdRef.current) return;
         await new Promise(resolve => setTimeout(resolve, 100));
         attempts++;
       }
+      if (operationId !== operationIdRef.current) return;
 
       setIsMuted(false);
       previousVolumeRef.current = 1.0;
@@ -170,6 +195,7 @@ function useAudioChannel(
 
       setCurrentUri(uri);
     } catch (error) {
+      if (operationId !== null && operationId !== operationIdRef.current) return;
       console.error('Error loading audio:', error);
       setCurrentUri(null);
       setIsPlaying(false);
@@ -177,15 +203,22 @@ function useAudioChannel(
       setTotalTime('--:--');
       setProgress(0);
     } finally {
-      setIsLoading(false);
+      if (operationId !== null && operationId === operationIdRef.current) {
+        setIsLoading(false);
+      }
     }
   };
 
   const loadAndPlay = async (uri: string) => {
+    const operationId = ++operationIdRef.current;
     try {
       if (!uri || uri.trim() === '') {
         return;
       }
+
+      setIsLoading(true);
+      setLoadingUri(uri);
+      onPlayStart();
 
       // If same audio is already loaded, just play it
       if (currentUri === uri) {
@@ -195,6 +228,7 @@ function useAudioChannel(
             setCurrentTime('00:00');
             setProgress(0);
           }
+          await setIsAudioActiveAsync(true);
           onPlayStart();
           await player.play();
           setIsPlaying(true);
@@ -202,7 +236,6 @@ function useAudioChannel(
         return;
       }
 
-      setIsLoading(true);
       setIsPlaying(false);
 
       if (player.playing) {
@@ -210,16 +243,20 @@ function useAudioChannel(
       }
 
       const cachedUri = await audioCacheService.getAudioUri(uri);
+      if (operationId !== operationIdRef.current) return;
 
       const audioSource: AudioSource = { uri: cachedUri };
       await player.replace(audioSource);
+      if (operationId !== operationIdRef.current) return;
 
       let attempts = 0;
       const maxAttempts = 50; // 5 seconds max
       while ((!isFinite(player.duration) || player.duration === 0) && attempts < maxAttempts) {
+        if (operationId !== operationIdRef.current) return;
         await new Promise(resolve => setTimeout(resolve, 100));
         attempts++;
       }
+      if (operationId !== operationIdRef.current) return;
 
       setIsMuted(false);
       previousVolumeRef.current = 1.0;
@@ -233,10 +270,11 @@ function useAudioChannel(
       setCurrentUri(uri);
 
       // Play immediately after loading - don't wait for state update
-      onPlayStart();
+      await setIsAudioActiveAsync(true);
       await player.play();
       setIsPlaying(true);
     } catch (error) {
+      if (operationId !== operationIdRef.current) return;
       console.error('Error loading and playing audio:', error);
       setCurrentUri(null);
       setIsPlaying(false);
@@ -244,21 +282,27 @@ function useAudioChannel(
       setTotalTime('--:--');
       setProgress(0);
     } finally {
-      setIsLoading(false);
+      if (operationId === operationIdRef.current) {
+        setIsLoading(false);
+        setLoadingUri(null);
+      }
     }
   };
 
   const unloadAudio = async () => {
+    operationIdRef.current++;
     try {
       if (player.playing) {
         player.pause();
       }
 
       setIsPlaying(false);
+      setIsLoading(false);
       // Don't call replace(null) - it's not supported
       // Just clear our state and let the player keep the last audio loaded
 
       setCurrentUri(null);
+      setLoadingUri(null);
       setIsMuted(false);
       previousVolumeRef.current = 1.0;
       setCurrentTime('00:00');
@@ -266,7 +310,9 @@ function useAudioChannel(
       setProgress(0);
     } catch (error) {
       setCurrentUri(null);
+      setLoadingUri(null);
       setIsPlaying(false);
+      setIsLoading(false);
       setIsMuted(false);
       previousVolumeRef.current = 1.0;
       setCurrentTime('00:00');
@@ -282,17 +328,23 @@ function useAudioChannel(
       }
 
       if (!player.playing) {
+        setIsLoading(true);
+        setLoadingUri(currentUri);
         if (isPlayerAtEnd(player)) {
           await player.seekTo(0);
           setCurrentTime('00:00');
           setProgress(0);
         }
+        await setIsAudioActiveAsync(true);
         onPlayStart();
         await player.play();
         setIsPlaying(true);
       }
     } catch (error) {
       setIsPlaying(false);
+    } finally {
+      setIsLoading(false);
+      setLoadingUri(null);
     }
   };
 
@@ -311,17 +363,23 @@ function useAudioChannel(
   };
 
   const pauseFromCoordinator = useCallback(() => {
+    operationIdRef.current++;
     try {
       player.pause();
     } catch {}
     setIsPlaying(false);
+    setIsLoading(false);
+    setLoadingUri(null);
   }, [player]);
 
   const stop = async () => {
+    operationIdRef.current++;
     try {
       // Always try to pause, regardless of currentUri state
       player.pause();
       setIsPlaying(false);
+      setIsLoading(false);
+      setLoadingUri(null);
 
       if (currentUri) {
         await player.seekTo(0);
@@ -430,6 +488,7 @@ function useAudioChannel(
   return {
     isPlaying,
     isLoading,
+    loadingUri,
     currentTime,
     totalTime,
     progress,
@@ -465,14 +524,17 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
   // backgrounded or the device is locked (and iOS surfaces lock-screen
   // transport controls for the active playback session).
   useEffect(() => {
-    setAudioModeAsync({
-      playsInSilentMode: true,
-      shouldPlayInBackground: true,
-      interruptionMode: 'doNotMix',
-      interruptionModeAndroid: 'doNotMix',
-    }).catch((error) => {
+    configureBackgroundAudioSession().catch((error) => {
       console.warn('Failed to configure audio mode:', error);
     });
+
+    const subscription = AppState.addEventListener('change', () => {
+      configureBackgroundAudioSession().catch((error) => {
+        console.warn('Failed to keep audio session active:', error);
+      });
+    });
+
+    return () => subscription.remove();
   }, []);
 
   // Pause the other channels' native players so only one stream is audible
@@ -487,6 +549,22 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
   const reflection = useAudioChannel(reflectionPlayer, useCallback(() => pauseOthers('reflection'), [pauseOthers]));
   const fortyday = useAudioChannel(fortydayPlayer, useCallback(() => pauseOthers('fortyday'), [pauseOthers]));
   channelsRef.current = { main, reflection, fortyday };
+
+  useEffect(() => {
+    registeredStopAllAudio = async () => {
+      await Promise.all([
+        channelsRef.current.main?.unloadAudio(),
+        channelsRef.current.reflection?.unloadAudio(),
+        channelsRef.current.fortyday?.unloadAudio(),
+      ]);
+    };
+
+    return () => {
+      if (registeredStopAllAudio) {
+        registeredStopAllAudio = null;
+      }
+    };
+  }, []);
 
   return (
     <AudioPlayerContext.Provider value={{ main, reflection, fortyday }}>

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { contentService, Content, FortyDayTask } from '../services/content.service';
+import { contentService, Content } from '../services/content.service';
 import { useFortyDayStore, Task, DayData } from '../store/fortyDayStore';
 
 interface UseFortyDayReturn {
@@ -133,8 +133,8 @@ export function useFortyDayDetails(dayNumber: number): UseFortyDayDetailsReturn 
   const [error, setError] = useState<string | null>(null);
 
   const fetchDay = useCallback(async () => {
-    if (dayNumber < 1 || dayNumber > 40) {
-      setError('Invalid day number. Must be between 1 and 40.');
+    if (!Number.isInteger(dayNumber) || dayNumber < 1) {
+      setError('Invalid day number. Must be a positive whole number.');
       setLoading(false);
       return;
     }

@@ -51,6 +51,13 @@ const getDayTitleFontSize = (title: string): number => {
   return 28;
 };
 
+const getChallengeDayIndex = (days: { day: number }[], dayNumber: number): number => {
+  if (days.length === 0) return 0;
+  const exactIndex = days.findIndex((day) => day.day === dayNumber);
+  if (exactIndex >= 0) return exactIndex;
+  return Math.max(0, Math.min(dayNumber - 1, days.length - 1));
+};
+
 export const FortyDay = () => {
   const { raw: navigation, navigateToTemptationDetails } = useAppNavigation();
   const insets = useSafeAreaInsets();
@@ -73,7 +80,7 @@ export const FortyDay = () => {
   const dayTransitionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [activeIndex, setActiveIndex] = useState(() => {
     if (days.length === 0) return 0;
-    return Math.max(0, Math.min(currentDay - 1, days.length - 1));
+    return getChallengeDayIndex(days, currentDay);
   });
   
   const audioPlayer = useFortyDayAudioPlayer();
@@ -153,12 +160,12 @@ export const FortyDay = () => {
 
   useEffect(() => {
     if (days.length > 0) {
-      const safeIndex = Math.max(0, Math.min(currentDay - 1, days.length - 1));
+      const safeIndex = getChallengeDayIndex(days, currentDay);
       if (safeIndex !== activeIndex) {
         setActiveIndex(safeIndex);
       }
     }
-  }, [days.length, currentDay]);
+  }, [days, currentDay, activeIndex]);
 
   // Prepare audio metadata when switching days so duration is available before play.
   useEffect(() => {
@@ -476,7 +483,7 @@ export const FortyDay = () => {
                     setCurrentDay(days[index].day);
                     setIsDayTransitioning(false);
                   }}
-                  defaultIndex={days.length > 0 ? Math.max(0, Math.min(currentDay - 1, days.length - 1)) : 0}
+                  defaultIndex={days.length > 0 ? getChallengeDayIndex(days, currentDay) : 0}
                   loop={false}
                   enabled={true}
                   style={styles.carousel}

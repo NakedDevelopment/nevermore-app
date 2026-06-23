@@ -73,10 +73,10 @@ export function App() {
 
     if (cinzelFontsLoaded && robotoFontsLoaded && assetsLoaded) {
       initAuth();
+      iapService.setSubscriptionUpdater((value: boolean) => {
+        useSubscriptionStore.getState().setSubscribed(value);
+      });
       iapService.init().then(() => {
-        iapService.setSubscriptionUpdater((value: boolean) => {
-          useSubscriptionStore.getState().setSubscribed(value);
-        });
         useSubscriptionStore.getState().checkSubscription();
       });
     }

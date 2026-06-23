@@ -16,7 +16,6 @@ import CheckmarkIcon from '../assets/icons/checkmark';
 import { Button } from './Button';
 import { useSharedAccessStore } from '../store/sharedAccessStore';
 import { useSubscriptionStore } from '../store/subscriptionStore';
-import { getIAPProductIds } from '../services/iap.service';
 
 type PlanType = 'monthly' | 'yearly';
 
@@ -42,7 +41,7 @@ export function SubscriptionPopup({
     isSubscribed,
     isLoading,
     error,
-    purchaseSubscription,
+    presentPaywall,
     restorePurchases,
     getRestorePurchaseStatus,
     setError,
@@ -93,9 +92,7 @@ export function SubscriptionPopup({
   }, [isSubscribed, isVisible, onSubscribeSuccess, onClose]);
 
   const handleSubscribe = useCallback(async () => {
-    const productIds = getIAPProductIds();
-    const productId = productIds[selectedPlan];
-    const success = await purchaseSubscription(productId);
+    const success = await presentPaywall();
     if (success) {
       if (useSharedAccessStore.getState().isSharedAccessActive) {
         await markSharedAccessUpgraded();
@@ -103,7 +100,7 @@ export function SubscriptionPopup({
       onSubscribeSuccess?.();
       onClose();
     }
-  }, [selectedPlan, purchaseSubscription, markSharedAccessUpgraded, onSubscribeSuccess, onClose]);
+  }, [presentPaywall, markSharedAccessUpgraded, onSubscribeSuccess, onClose]);
 
   const handleRestore = useCallback(async () => {
     const success = await restorePurchases();

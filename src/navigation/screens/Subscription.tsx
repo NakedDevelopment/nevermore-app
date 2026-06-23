@@ -25,7 +25,6 @@ import { ScreenNames } from '../../constants/ScreenNames';
 import { useSharedAccessStore } from '../../store/sharedAccessStore';
 import { useSubscriptionStore } from '../../store/subscriptionStore';
 import { useTrialStore } from '../../store/trialStore';
-import { getIAPProductIds } from '../../services/iap.service';
 
 type PlanType = 'monthly' | 'yearly';
 
@@ -45,7 +44,8 @@ export function Subscription() {
     activePlan,
     isLoading,
     error,
-    purchaseSubscription,
+    presentPaywall,
+    presentCustomerCenter,
     restorePurchases,
     getRestorePurchaseStatus,
     checkSubscription,
@@ -89,13 +89,7 @@ export function Subscription() {
   const handleSubscribe = async () => {
     setError(null);
     try {
-      const productIds = getIAPProductIds();
-      const productId = productIds[selectedPlan];
-      if (!productId) {
-        setError('Subscription products are not configured. Please try again later.');
-        return;
-      }
-      const success = await purchaseSubscription(productId);
+      const success = await presentPaywall();
       if (success) {
         if (useSharedAccessStore.getState().isSharedAccessActive) {
           await markSharedAccessUpgraded();
@@ -107,6 +101,15 @@ export function Subscription() {
       }
     } catch (err: any) {
       setError(err?.message || 'Unable to start purchase. Please try again.');
+    }
+  };
+
+  const handleManageSubscription = async () => {
+    setError(null);
+    try {
+      await presentCustomerCenter();
+    } catch (err: any) {
+      setError(err?.message || 'Unable to open subscription center. Please try again.');
     }
   };
 
@@ -284,6 +287,19 @@ export function Subscription() {
                         </Text>
                       </View>
                     )}
+                </View>
+                {error ? (
+                  <Text style={styles.errorText}>{error}</Text>
+                ) : null}
+                <View style={styles.buttonContainer}>
+                  <Button
+                    title={isLoading ? 'Opening...' : 'Manage Subscription'}
+                    onPress={handleManageSubscription}
+                    variant="primary"
+                    size="medium"
+                    style={styles.subscribeButton}
+                    disabled={isLoading}
+                  />
                 </View>
               </>
             ) : (

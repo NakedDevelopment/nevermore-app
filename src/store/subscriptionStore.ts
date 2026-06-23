@@ -30,6 +30,8 @@ interface SubscriptionState {
   loadProducts: () => Promise<void>;
   purchaseSubscription: (productId: string) => Promise<boolean>;
   restorePurchases: () => Promise<boolean>;
+  presentPaywall: () => Promise<boolean>;
+  presentCustomerCenter: () => Promise<void>;
   getRestorePurchaseStatus: () => Promise<RestorePurchaseStatus>;
   resetSubscriptionState: () => void;
   setLoading: (loading: boolean) => void;
@@ -76,26 +78,28 @@ export const useSubscriptionStore = create<SubscriptionState>()(
       },
 
       checkSubscription: async () => {
+        const { iapService } = await import('../services/iap.service');
         set({ isLoading: true, error: null });
         try {
-          const [{ getCurrentUser }, { userProfileService }] = await Promise.all([
-            import('../services/auth.service'),
-            import('../services/userProfile.service'),
-          ]);
+          const { getCurrentUser } = await import('../services/auth.service');
           const user = await getCurrentUser();
           if (!user) {
             set({ isSubscribed: false, activePlan: null, isLoading: false, error: null });
             return;
           }
 
-          const profile = await userProfileService.getUserProfileByAuthId(user.$id);
-          const isSubscribed = profile?.subscription_status === 'active';
+          await iapService.identifyUser(user.$id, user.email, user.name);
+          const [isSubscribed, activePlan] = await Promise.all([
+            iapService.checkSubscription(),
+            iapService.getActiveSubscriptionPlan(),
+          ]);
           set({
             isSubscribed,
-            activePlan: isSubscribed ? get().activePlan : null,
+            activePlan: isSubscribed ? activePlan : null,
             isLoading: false,
             error: null,
           });
+          syncCurrentUserSubscriptionStatus(isSubscribed);
         } catch (err) {
           const message = err instanceof Error ? err.message : 'Failed to check subscription';
           set({ isLoading: false, error: message });
@@ -140,6 +144,49 @@ export const useSubscriptionStore = create<SubscriptionState>()(
           const message = err instanceof Error ? err.message : 'Restore failed';
           set({ isLoading: false, error: message });
           return false;
+        }
+      },
+
+      presentPaywall: async (): Promise<boolean> => {
+        const { iapService } = await import('../services/iap.service');
+        set({ isLoading: true, error: null });
+        try {
+          const success = await iapService.presentPaywall();
+          const activePlan = success ? await iapService.getActiveSubscriptionPlan() : null;
+          set({
+            isSubscribed: success,
+            activePlan,
+            isLoading: false,
+            error: null,
+          });
+          syncCurrentUserSubscriptionStatus(success);
+          return success;
+        } catch (err) {
+          const message = err instanceof Error ? err.message : 'Unable to present paywall';
+          set({ isLoading: false, error: message });
+          return false;
+        }
+      },
+
+      presentCustomerCenter: async (): Promise<void> => {
+        const { iapService } = await import('../services/iap.service');
+        set({ isLoading: true, error: null });
+        try {
+          await iapService.presentCustomerCenter();
+          const [isSubscribed, activePlan] = await Promise.all([
+            iapService.checkSubscription(),
+            iapService.getActiveSubscriptionPlan(),
+          ]);
+          set({
+            isSubscribed,
+            activePlan: isSubscribed ? activePlan : null,
+            isLoading: false,
+            error: null,
+          });
+          syncCurrentUserSubscriptionStatus(isSubscribed);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : 'Unable to open subscription center';
+          set({ isLoading: false, error: message });
         }
       },
 

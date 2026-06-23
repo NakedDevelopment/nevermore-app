@@ -170,7 +170,7 @@ export const Journey40Day = () => {
   const getInvalidNavigationTask = () =>
     tasks.find((task) => task.title.trim() && task.taskType === 'navigation' && !task.contentId);
 
-  // Real-time day validation (range + duplicate check)
+  // Real-time day validation (positive integer + duplicate check)
   useEffect(() => {
     if (isEditMode && !isEditing) {
       setDayError(null);
@@ -185,8 +185,8 @@ export const Journey40Day = () => {
     }
 
     const dayNum = Number(day);
-    if (!Number.isInteger(dayNum) || dayNum < 1 || dayNum > 40) {
-      setDayError('Day must be a whole number between 1 and 40');
+    if (!Number.isInteger(dayNum) || dayNum < 1) {
+      setDayError('Day must be a positive whole number');
       setDayValidationPending(false);
       return;
     }
@@ -707,7 +707,6 @@ export const Journey40Day = () => {
                 onChange={(e) => setDay(e.target.value === '' ? '' : Number(e.target.value))}
                 placeholder="Enter day number (e.g., 1, 2, 3)"
                 min="1"
-                max="40"
                 disabled={isEditMode ? !isEditing : false}
                 aria-invalid={!!dayError}
                 aria-describedby={dayError || dayValidationPending ? 'day-field-feedback' : undefined}

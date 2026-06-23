@@ -85,7 +85,9 @@ export const useAuthStore = create<AuthState>((set) => ({
   signOut: async () => {
     set({ isLoading: true, error: null });
     try {
+      await import('../contexts/AudioPlayerProvider').then(({ stopAllAudioPlayback }) => stopAllAudioPlayback());
       await authService.signOut();
+      await import('../services/iap.service').then(({ iapService }) => iapService.logOut());
       
       // Clear onboarding state on sign out
       useOnboardingStore.getState().resetOnboarding();
@@ -95,6 +97,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       
       set({ user: null, isAuthenticated: false, isLoading: false });
     } catch (error: any) {
+      await import('../contexts/AudioPlayerProvider').then(({ stopAllAudioPlayback }) => stopAllAudioPlayback());
       useSharedAccessStore.getState().clearSharedAccess();
       set({ 
         error: error.message || 'Failed to sign out', 
@@ -107,7 +110,9 @@ export const useAuthStore = create<AuthState>((set) => ({
   deleteAccount: async () => {
     set({ isLoading: true, error: null });
     try {
+      await import('../contexts/AudioPlayerProvider').then(({ stopAllAudioPlayback }) => stopAllAudioPlayback());
       await authService.deleteAccount();
+      await import('../services/iap.service').then(({ iapService }) => iapService.logOut());
       
       useBookmarkStore.getState().clearBookmarks();
       useFortyDayStore.getState().clearProgress();
@@ -138,11 +143,13 @@ export const useAuthStore = create<AuthState>((set) => ({
         await useSubscriptionStore.getState().checkSubscription();
         set({ user, isAuthenticated: true, isLoading: false });
       } else {
+        await import('../contexts/AudioPlayerProvider').then(({ stopAllAudioPlayback }) => stopAllAudioPlayback());
         useSharedAccessStore.getState().clearSharedAccess();
         useSubscriptionStore.getState().resetSubscriptionState();
         set({ user: null, isAuthenticated: false, isLoading: false });
       }
     } catch (error) {
+      await import('../contexts/AudioPlayerProvider').then(({ stopAllAudioPlayback }) => stopAllAudioPlayback());
       useSubscriptionStore.getState().resetSubscriptionState();
       set({ user: null, isAuthenticated: false, isLoading: false });
     }

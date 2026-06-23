@@ -1,14 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { Dimensions, FlatList, ImageBackground as RNImageBackground, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { FlatList, ImageBackground as RNImageBackground, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { DrawerActions } from '@react-navigation/native';
-import {
-  Canvas,
-  Image,
-  useImage,
-} from '@shopify/react-native-skia';
 import Animated, { 
   useSharedValue, 
   useAnimatedStyle, 
@@ -46,8 +41,6 @@ export function Bookmark() {
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [bookmarkToDelete, setBookmarkToDelete] = useState<{ id: string; title: string; role: string; index: number } | null>(null);
   
-  const width = Dimensions.get('window').width;
-  const bg = useImage(require('../../assets/main-bg.png'));
   const insets = useSafeAreaInsets();
 
   // Reanimated shared values for entrance animations
@@ -58,6 +51,7 @@ export function Bookmark() {
   const bookmarkScales = useSharedValue<number[]>([]);
   const bookmarkOpacities = useSharedValue<number[]>([]);
   const filteredBookmarks = getFilteredBookmarks(activeTab);
+  const hasPlayedEntranceRef = useRef(false);
 
   const handleTabChange = (tab: 'Recovery' | 'Support') => {
     setActiveTab(tab);
@@ -74,6 +68,19 @@ export function Bookmark() {
   // Reset and animate on screen focus
   useFocusEffect(
     React.useCallback(() => {
+      if (hasPlayedEntranceRef.current) {
+        headerOpacity.value = withTiming(1, { duration: 120 });
+        headerTranslateY.value = withTiming(0, { duration: 120 });
+        contentOpacity.value = withTiming(1, { duration: 120 });
+        contentTranslateY.value = withTiming(0, { duration: 120 });
+        const currentBookmarks = getFilteredBookmarks(activeTab);
+        bookmarkOpacities.value = currentBookmarks.map(() => 1);
+        bookmarkScales.value = currentBookmarks.map(() => 1);
+        return;
+      }
+
+      hasPlayedEntranceRef.current = true;
+
       // Reset animation values
       headerOpacity.value = 0;
       headerTranslateY.value = -30;
@@ -176,9 +183,6 @@ export function Bookmark() {
           style={StyleSheet.absoluteFillObject}
           resizeMode="cover"
         />
-        <Canvas style={styles.canvas}>
-          {bg ? <Image image={bg} x={0} y={0} width={width} height={900} fit="cover" /> : null}
-        </Canvas>
       </View>
 
       {/* Content - animated */}
@@ -301,9 +305,6 @@ const styles = StyleSheet.create({
     bottom: 0,
   },
   canvasTouchable: {
-    flex: 1,
-  },
-  canvas: {
     flex: 1,
   },
   contentHeader: {

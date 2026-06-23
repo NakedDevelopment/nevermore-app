@@ -245,7 +245,7 @@ class ContentService {
         tableId: APPWRITE_CONTENT_COLLECTION_ID,
         queries: [
           Query.equal('type', 'forty_day_journey'),
-          Query.limit(40),
+          Query.limit(1000),
         ],
       });
 

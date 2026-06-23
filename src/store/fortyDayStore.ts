@@ -90,6 +90,9 @@ const convertContentToTasks = (content: Content): Task[] => {
 
 const getTaskStorageKey = (day: number, taskId: string) => `day-${day}-task-${taskId}`;
 
+const isValidChallengeDay = (day: unknown): day is number =>
+  typeof day === 'number' && Number.isFinite(day) && day >= 1;
+
 const syncFortyDayProgress = (currentDay: number, completedTasks: Record<string, boolean>) => {
   void userDataSyncService
     .updateSyncedUserData({
@@ -109,7 +112,7 @@ export const useFortyDayStore = create<FortyDayState>()(
       error: null,
       
       setCurrentDay: (day: number) => {
-        if (day >= 1 && day <= 40) {
+        if (isValidChallengeDay(day)) {
           set({ currentDay: day });
           syncFortyDayProgress(day, get().completedTasks);
         }
@@ -219,7 +222,7 @@ export const useFortyDayStore = create<FortyDayState>()(
                 ? syncedCompletedTasks
                 : state.completedTasks,
             currentDay:
-              typeof syncedCurrentDay === 'number' && syncedCurrentDay >= 1 && syncedCurrentDay <= 40
+              isValidChallengeDay(syncedCurrentDay)
                 ? syncedCurrentDay
                 : state.currentDay,
           }));
@@ -229,16 +232,12 @@ export const useFortyDayStore = create<FortyDayState>()(
       },
 
       loadFortyDayContent: async () => {
-        console.log('loadFortyDayContent called - fetching from Appwrite...');
         await get().hydrateProgressFromBackend();
         const existingCompletedTasks = get().getCompletedTasks();
         set({ loading: true, error: null });
         
         try {
           const fortyDayContent = await contentService.getFortyDayContent();
-          
-          console.log(`Loaded ${fortyDayContent.length} forty day journey items`);
-          console.log('Raw content from Appwrite:', fortyDayContent.map(c => ({ day: c.day, title: c.title, $id: c.$id })));
           
           if (fortyDayContent.length === 0) {
             set({ 
@@ -291,15 +290,6 @@ export const useFortyDayStore = create<FortyDayState>()(
               audioUrl,
               isFree,
             };
-          });
-          
-          console.log('Generated days data:', {
-            totalDays: days.length,
-            sampleDay: days[0],
-            dayNumber: days[0]?.day,
-            dayTitle: days[0]?.title,
-            totalTasks: days[0]?.tasks.length,
-            hasAudio: !!days[0]?.audioUrl,
           });
           
           set({ 

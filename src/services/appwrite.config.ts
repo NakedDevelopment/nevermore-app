@@ -11,6 +11,9 @@ import {
   APPWRITE_PLATFORM,
   IAP_PRODUCT_ID_MONTHLY,
   IAP_PRODUCT_ID_YEARLY,
+  REVENUECAT_API_KEY,
+  REVENUECAT_API_KEY_ANDROID,
+  REVENUECAT_API_KEY_IOS,
 } from '@env';
 
 const appwriteConfig = {
@@ -25,6 +28,9 @@ const appwriteConfig = {
   platform: APPWRITE_PLATFORM || '',
   iapProductIdMonthly: IAP_PRODUCT_ID_MONTHLY || '',
   iapProductIdYearly: IAP_PRODUCT_ID_YEARLY || '',
+  revenueCatApiKey: REVENUECAT_API_KEY || '',
+  revenueCatApiKeyIos: REVENUECAT_API_KEY_IOS || REVENUECAT_API_KEY || '',
+  revenueCatApiKeyAndroid: REVENUECAT_API_KEY_ANDROID || REVENUECAT_API_KEY || '',
 };
 
 

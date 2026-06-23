@@ -932,6 +932,32 @@ export async function fetchContentById(contentId: string): Promise<ContentDocume
   }
 }
 
+function parseDaySearch(searchQuery?: string): number | null {
+  const normalized = searchQuery?.trim().toLowerCase();
+  if (!normalized) return null;
+
+  const match = normalized.match(/^day\s*(\d+)$/) || normalized.match(/^(\d+)$/);
+  if (!match?.[1]) return null;
+
+  const day = Number(match[1]);
+  return Number.isInteger(day) && day > 0 ? day : null;
+}
+
+function contentMatchesSearch(content: ContentDocument, searchQuery?: string): boolean {
+  const normalized = searchQuery?.trim().toLowerCase();
+  if (!normalized) return true;
+
+  const titleMatches = (content.title || '').toLowerCase().includes(normalized);
+  if (titleMatches) return true;
+
+  const daySearch = parseDaySearch(normalized);
+  return (
+    daySearch !== null &&
+    content.type === 'forty_day_journey' &&
+    Number(content.day) === daySearch
+  );
+}
+
 /**
  * Fetch all content documents from Appwrite
  */
@@ -963,19 +989,18 @@ export async function fetchContent(
 
   try {
     const queries: string[] = [];
+    const hasSearch = !!searchQuery?.trim();
 
-    // Add pagination queries
+    // Add pagination queries. Search is filtered client-side so day numbers can
+    // match 40-day journey rows without requiring a database title index.
     if (limit !== undefined) {
-      queries.push(Query.limit(limit));
+      queries.push(Query.limit(hasSearch ? 1000 : limit));
     }
-    if (offset !== undefined) {
+    if (offset !== undefined && !hasSearch) {
       queries.push(Query.offset(offset));
     }
-
-    // Add search query if provided
-    // Using Query.contains() instead of Query.search() to avoid requiring a fulltext index
-    if (searchQuery && searchQuery.trim()) {
-      queries.push(Query.contains('title', searchQuery.trim()));
+    if (limit === undefined && hasSearch) {
+      queries.push(Query.limit(1000));
     }
 
     // Add filters
@@ -1000,6 +1025,19 @@ export async function fetchContent(
       tableId: CONTENT_COLLECTION_ID,
       queries
     });
+
+    if (hasSearch) {
+      const filteredDocuments = (response.rows as unknown as ContentDocument[]).filter((doc) =>
+        contentMatchesSearch(doc, searchQuery)
+      );
+      const start = offset || 0;
+      const end = limit !== undefined ? start + limit : undefined;
+
+      return {
+        documents: filteredDocuments.slice(start, end),
+        total: filteredDocuments.length,
+      };
+    }
 
     return {
       documents: response.rows as unknown as ContentDocument[],

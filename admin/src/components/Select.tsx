@@ -49,11 +49,23 @@ export const Select: React.FC<SelectProps> = ({
   useEffect(() => {
     if (isOpen && buttonRef.current) {
       const rect = buttonRef.current.getBoundingClientRect();
+      const viewportPadding = 16;
+      const gap = 4;
+      const availableBelow = window.innerHeight - rect.bottom - viewportPadding;
+      const availableAbove = rect.top - viewportPadding;
+      const maxHeight = Math.max(
+        180,
+        Math.min(360, Math.max(availableBelow, availableAbove))
+      );
+      const shouldOpenAbove = availableBelow < 220 && availableAbove > availableBelow;
+
       setDropdownStyle({
         position: 'fixed',
-        top: rect.bottom + 4,
+        top: shouldOpenAbove ? undefined : rect.bottom + gap,
+        bottom: shouldOpenAbove ? window.innerHeight - rect.top + gap : undefined,
         left: rect.left,
         width: rect.width,
+        maxHeight,
       });
     }
   }, [isOpen]);
@@ -88,7 +100,7 @@ export const Select: React.FC<SelectProps> = ({
         <div 
           ref={dropdownRef}
           style={dropdownStyle}
-          className="z-[9999] bg-[#131313] border border-[rgba(255,255,255,0.25)] rounded-[16px] shadow-lg overflow-hidden"
+          className="z-[9999] bg-[#131313] border border-[rgba(255,255,255,0.25)] rounded-[16px] shadow-lg overflow-y-auto overflow-x-hidden custom-scrollbar"
         >
           {options.map((option) => (
             <button

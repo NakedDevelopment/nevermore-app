@@ -288,8 +288,7 @@ function RootStack({ initialRouteName }: { initialRouteName: string }) {
           title: 'Temptation Details',
           animation: 'slide_from_bottom',
           animationDuration: 400,
-          gestureEnabled: true,
-          gestureDirection: 'vertical',
+          gestureEnabled: false,
         }}
       />
       <Stack.Screen
