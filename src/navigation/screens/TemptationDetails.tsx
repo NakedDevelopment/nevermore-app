@@ -40,6 +40,7 @@ import { useEntranceAnimations } from '../../hooks/useEntranceAnimations';
 import { useAudioPlaylist } from '../../hooks/useAudioPlaylist';
 import { useContentPresentation } from '../../hooks/useContentPresentation';
 import { useAudioPlayer } from '../../hooks/useAudioPlayer';
+import { audioCacheService } from '../../services/audioCache.service';
 import { getContentCategoryId } from '../../services/content.service';
 import { RootStackParamList } from '../../hooks/useAppNavigation';
 
@@ -97,6 +98,8 @@ export default function TemptationDetails() {
     displayImage,
     audioFiles,
   } = useContentPresentation(content, activeButton);
+  const imagePrefetchKey = React.useMemo(() => images.join('|'), [images]);
+  const audioPrefetchKey = React.useMemo(() => audioFiles.join('|'), [audioFiles]);
   
   const isActiveMainTrack = !!mainContentURL && mainContentAudioPlayer.currentUri === mainContentURL;
   const isMainTrackBuffering = !!mainContentURL && mainContentAudioPlayer.loadingUri === mainContentURL;
@@ -111,6 +114,21 @@ export default function TemptationDetails() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mainContentURL]);
+
+  React.useEffect(() => {
+    images.slice(0, 2).forEach((imageUrl) => {
+      Image.prefetch(imageUrl).catch(() => {});
+    });
+
+    const audioWarmTimer = setTimeout(() => {
+      audioFiles.slice(0, 2).forEach((audioUrl) => {
+        audioCacheService.warmAudio(audioUrl).catch(() => {});
+      });
+    }, 1200);
+
+    return () => clearTimeout(audioWarmTimer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [audioPrefetchKey, imagePrefetchKey]);
   
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   
@@ -336,11 +354,13 @@ export default function TemptationDetails() {
                 const index = Math.round(event.nativeEvent.contentOffset.x / imageWidth);
                 setCurrentImageIndex(index);
               }}
-              renderItem={({ item }) => (
+              renderItem={({ item, index }) => (
                 <Image
                   source={{ uri: item }}
                   style={styles.imagePlaceholder}
                   contentFit="contain"
+                  cachePolicy="memory-disk"
+                  priority={index === 0 ? 'high' : 'normal'}
                 />
               )}
               contentContainerStyle={styles.imageListContainer}

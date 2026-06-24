@@ -22,6 +22,7 @@ class AudioCacheService {
   private cacheIndex: CacheIndex = {};
   private initialized = false;
   private initPromise: Promise<void> | null = null;
+  private downloadPromises: Partial<Record<string, Promise<string>>> = {};
 
   /**
    * Generate a simple hash from URL for filename
@@ -176,13 +177,77 @@ class AudioCacheService {
   }
 
   /**
+   * Return a cached file immediately when available. When the file is not
+   * cached yet, return the remote URL so playback can stream right away.
+   */
+  async getPlayableUri(remoteUrl: string): Promise<string> {
+    await this.init();
+
+    if (!remoteUrl || remoteUrl.trim() === '') {
+      return remoteUrl;
+    }
+
+    if (remoteUrl.startsWith('file://') || remoteUrl.startsWith(FileSystem.documentDirectory || '') || remoteUrl.startsWith(FileSystem.cacheDirectory || '')) {
+      return remoteUrl;
+    }
+
+    const hash = this.hashUrl(remoteUrl);
+    const cachedEntry = this.cacheIndex[hash];
+
+    if (cachedEntry) {
+      try {
+        const fileInfo = await FileSystem.getInfoAsync(cachedEntry.localPath);
+        if (fileInfo.exists) {
+          return cachedEntry.localPath;
+        }
+      } catch {
+        // Cache entry is stale; stream now and refresh it below.
+      }
+    }
+
+    return remoteUrl;
+  }
+
+  async warmAudio(remoteUrl: string): Promise<void> {
+    await this.init();
+
+    if (!remoteUrl || remoteUrl.trim() === '') {
+      return;
+    }
+
+    if (remoteUrl.startsWith('file://') || remoteUrl.startsWith(FileSystem.documentDirectory || '') || remoteUrl.startsWith(FileSystem.cacheDirectory || '')) {
+      return;
+    }
+
+    const hash = this.hashUrl(remoteUrl);
+    const cachedEntry = this.cacheIndex[hash];
+
+    if (cachedEntry) {
+      try {
+        const fileInfo = await FileSystem.getInfoAsync(cachedEntry.localPath);
+        if (fileInfo.exists) {
+          return;
+        }
+      } catch {
+        // File disappeared; redownload below.
+      }
+    }
+
+    await this.downloadAndCache(remoteUrl, hash);
+  }
+
+  /**
    * Download audio file and cache it locally
    */
   private async downloadAndCache(remoteUrl: string, hash: string): Promise<string> {
+    if (this.downloadPromises[hash]) {
+      return this.downloadPromises[hash];
+    }
+
     const ext = this.getExtension(remoteUrl);
     const localPath = `${AUDIO_CACHE_DIR}${hash}.${ext}`;
 
-    try {
+    this.downloadPromises[hash] = (async () => {
       console.log('Downloading audio to cache:', remoteUrl);
       
       const downloadResult = await FileSystem.downloadAsync(remoteUrl, localPath);
@@ -202,9 +267,15 @@ class AudioCacheService {
 
       console.log('Audio cached successfully:', localPath);
       return localPath;
+    })();
+
+    try {
+      return await this.downloadPromises[hash];
     } catch (error) {
       console.error('Error caching audio:', error);
       return remoteUrl; // Fall back to streaming
+    } finally {
+      delete this.downloadPromises[hash];
     }
   }
 }

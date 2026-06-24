@@ -108,6 +108,20 @@ function useAudioChannel(
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const operationIdRef = useRef(0);
 
+  const syncDurationWhenAvailable = async (operationId: number, maxAttempts = 30) => {
+    let attempts = 0;
+    while ((!isFinite(player.duration) || player.duration === 0) && attempts < maxAttempts) {
+      if (operationId !== operationIdRef.current) return;
+      await new Promise(resolve => setTimeout(resolve, 100));
+      attempts++;
+    }
+    if (operationId !== operationIdRef.current) return;
+
+    const durationMs = player.duration * 1000;
+    setTotalTime(isFinite(player.duration) && player.duration > 0 ? formatTime(durationMs) : '--:--');
+    setProgress(player.duration > 0 && isFinite(player.duration) ? player.currentTime / player.duration : 0);
+  };
+
   // Sync player state with React state
   useEffect(() => {
     if (intervalRef.current) {
@@ -160,40 +174,29 @@ function useAudioChannel(
 
       operationId = ++operationIdRef.current;
       setIsLoading(true);
+      setLoadingUri(uri);
       setIsPlaying(false);
 
       // Always pause before loading new audio to prevent overlap
       player.pause();
 
-      // Get cached audio URI (downloads if not cached)
-      const cachedUri = await audioCacheService.getAudioUri(uri);
+      const cachedUri = await audioCacheService.getPlayableUri(uri);
       if (operationId !== operationIdRef.current) return;
 
       const audioSource: AudioSource = { uri: cachedUri };
       await player.replace(audioSource);
       if (operationId !== operationIdRef.current) return;
 
-      // Wait for duration to be available
-      let attempts = 0;
-      const maxAttempts = 50; // 5 seconds max
-      while ((!isFinite(player.duration) || player.duration === 0) && attempts < maxAttempts) {
-        if (operationId !== operationIdRef.current) return;
-        await new Promise(resolve => setTimeout(resolve, 100));
-        attempts++;
-      }
-      if (operationId !== operationIdRef.current) return;
-
       setIsMuted(false);
       previousVolumeRef.current = 1.0;
       player.volume = 1.0;
 
-      // Initialize time values
-      const durationMs = player.duration * 1000;
       setCurrentTime('00:00');
-      setTotalTime(isFinite(player.duration) && player.duration > 0 ? formatTime(durationMs) : '--:--');
+      setTotalTime(isFinite(player.duration) && player.duration > 0 ? formatTime(player.duration * 1000) : '--:--');
       setProgress(0);
 
       setCurrentUri(uri);
+      void syncDurationWhenAvailable(operationId);
     } catch (error) {
       if (operationId !== null && operationId !== operationIdRef.current) return;
       console.error('Error loading audio:', error);
@@ -205,6 +208,7 @@ function useAudioChannel(
     } finally {
       if (operationId !== null && operationId === operationIdRef.current) {
         setIsLoading(false);
+        setLoadingUri(null);
       }
     }
   };
@@ -242,37 +246,27 @@ function useAudioChannel(
         player.pause();
       }
 
-      const cachedUri = await audioCacheService.getAudioUri(uri);
+      const cachedUri = await audioCacheService.getPlayableUri(uri);
       if (operationId !== operationIdRef.current) return;
 
       const audioSource: AudioSource = { uri: cachedUri };
       await player.replace(audioSource);
       if (operationId !== operationIdRef.current) return;
 
-      let attempts = 0;
-      const maxAttempts = 50; // 5 seconds max
-      while ((!isFinite(player.duration) || player.duration === 0) && attempts < maxAttempts) {
-        if (operationId !== operationIdRef.current) return;
-        await new Promise(resolve => setTimeout(resolve, 100));
-        attempts++;
-      }
-      if (operationId !== operationIdRef.current) return;
-
       setIsMuted(false);
       previousVolumeRef.current = 1.0;
       player.volume = 1.0;
 
-      const durationMs = player.duration * 1000;
       setCurrentTime('00:00');
-      setTotalTime(isFinite(player.duration) && player.duration > 0 ? formatTime(durationMs) : '--:--');
+      setTotalTime(isFinite(player.duration) && player.duration > 0 ? formatTime(player.duration * 1000) : '--:--');
       setProgress(0);
 
       setCurrentUri(uri);
 
-      // Play immediately after loading - don't wait for state update
       await setIsAudioActiveAsync(true);
       await player.play();
       setIsPlaying(true);
+      void syncDurationWhenAvailable(operationId);
     } catch (error) {
       if (operationId !== operationIdRef.current) return;
       console.error('Error loading and playing audio:', error);

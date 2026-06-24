@@ -29,6 +29,7 @@ import { useFortyDayStore, Task } from '../../store/fortyDayStore';
 import { useFortyDayAudioPlayer } from '../../hooks/useFortyDayAudioPlayer';
 import { useHasFullAccess } from '../../hooks/useHasFullAccess';
 import { SubscriptionPopup } from '../../components/SubscriptionPopup';
+import { audioCacheService } from '../../services/audioCache.service';
 import LockIcon from '../../assets/icons/lock';
 import MenuIcon from '../../assets/icons/menu';
 import FlagIcon from '../../assets/icons/flag';
@@ -179,15 +180,13 @@ export const FortyDay = () => {
         return;
       }
 
-      await audioPlayer.unloadAudio();
-      if (cancelled) return;
-
       if (activeDay?.audioUrl) {
         await audioPlayer.loadAudio(activeDay.audioUrl);
-        if (cancelled) {
-          // A newer effect has taken over; discard whatever we just loaded.
-          await audioPlayer.unloadAudio();
-        }
+        return;
+      }
+
+      if (!cancelled) {
+        await audioPlayer.unloadAudio();
       }
     };
 
@@ -200,6 +199,29 @@ export const FortyDay = () => {
   }, [activeIndex, days[activeIndex]?.audioUrl]);
 
   const currentDayData = days[activeIndex];
+
+  useEffect(() => {
+    const daysToPrepare = [days[activeIndex], days[activeIndex + 1]].filter(Boolean);
+
+    daysToPrepare.forEach((day) => {
+      day.tasks.forEach((task) => {
+        if (task.icon) {
+          Image.prefetch(task.icon).catch(() => {});
+        }
+      });
+    });
+
+    const nextDayAudioUrl = days[activeIndex + 1]?.audioUrl;
+    if (!nextDayAudioUrl) {
+      return;
+    }
+
+    const warmTimer = setTimeout(() => {
+      audioCacheService.warmAudio(nextDayAudioUrl).catch(() => {});
+    }, 1200);
+
+    return () => clearTimeout(warmTimer);
+  }, [activeIndex, days]);
 
   const selectDayIndex = (index: number) => {
     if (index < 0 || index >= days.length || index === activeIndex) {
@@ -288,6 +310,7 @@ export const FortyDay = () => {
     const isCurrentItem = item.day === days[activeIndex]?.day;
     const isLocked = !hasFullAccess;
     const dayTitleFontSize = getDayTitleFontSize(item.title);
+    const isItemLoading = isCurrentItem && !!item.audioUrl && audioPlayer.isLoading && audioPlayer.loadingUri === item.audioUrl;
 
     const cardContent = (
       <View style={styles.card}>
@@ -339,17 +362,13 @@ export const FortyDay = () => {
                 <LockIcon width={20} height={20} color="#6B7280" />
                 <Text style={styles.lockedHint}>Unlock to play</Text>
               </View>
-            ) : isCurrentItem && audioPlayer.isLoading ? (
-              <View style={styles.audioControlsWrapper}>
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              </View>
             ) : (
               <View style={styles.audioControlsWrapper}>
                 <View style={styles.audioControlsRow}>
                   <TouchableOpacity
                     style={[styles.audioControlBtn, !item.audioUrl && styles.mediaIconAreaDisabled]}
                     onPress={() => isCurrentItem && audioPlayer.seekBackward(10)}
-                    disabled={!item.audioUrl}
+                    disabled={!item.audioUrl || isItemLoading}
                   >
                     <BackwardIcon width={32} height={32} />
                   </TouchableOpacity>
@@ -358,7 +377,9 @@ export const FortyDay = () => {
                     onPress={() => isCurrentItem && item.audioUrl && handlePlayPause(item.audioUrl)}
                     disabled={!item.audioUrl}
                   >
-                    {isCurrentItem && audioPlayer.isPlaying ? (
+                    {isItemLoading ? (
+                      <ActivityIndicator size="small" color="#FFFFFF" />
+                    ) : isCurrentItem && audioPlayer.isPlaying ? (
                       <PauseIcon width={36} height={36} />
                     ) : (
                       <PlayIcon width={36} height={36} />
@@ -367,14 +388,14 @@ export const FortyDay = () => {
                   <TouchableOpacity
                     style={[styles.audioControlBtn, !item.audioUrl && styles.mediaIconAreaDisabled]}
                     onPress={() => isCurrentItem && audioPlayer.seekForward(10)}
-                    disabled={!item.audioUrl}
+                    disabled={!item.audioUrl || isItemLoading}
                   >
                     <Forward10Icon width={32} height={32} />
                   </TouchableOpacity>
                 </View>
                 {isCurrentItem && item.audioUrl && (
                   <Text style={styles.audioDuration}>
-                    {audioPlayer.isLoading ? '--:--' : audioPlayer.totalTime}
+                    {isItemLoading ? '--:--' : audioPlayer.totalTime}
                   </Text>
                 )}
               </View>
