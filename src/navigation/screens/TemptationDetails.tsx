@@ -105,22 +105,16 @@ export default function TemptationDetails() {
   const isMainTrackBuffering = !!mainContentURL && mainContentAudioPlayer.loadingUri === mainContentURL;
   const isMainTrackActiveOrBuffering = isActiveMainTrack || isMainTrackBuffering;
 
-  // Preload main content audio only when it will not interrupt an active track.
-  // This keeps temptation playback alive while users move between tabs/screens;
-  // a new track replaces the old one only when the user explicitly presses Play.
-  React.useEffect(() => {
-    if (mainContentURL && !mainContentAudioPlayer.isPlaying) {
-      mainContentAudioPlayer.loadAudio(mainContentURL);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mainContentURL]);
-
   React.useEffect(() => {
     images.slice(0, 2).forEach((imageUrl) => {
       Image.prefetch(imageUrl).catch(() => {});
     });
 
     const audioWarmTimer = setTimeout(() => {
+      if (mainContentURL) {
+        audioCacheService.warmAudio(mainContentURL).catch(() => {});
+      }
+
       audioFiles.slice(0, 2).forEach((audioUrl) => {
         audioCacheService.warmAudio(audioUrl).catch(() => {});
       });
@@ -128,7 +122,7 @@ export default function TemptationDetails() {
 
     return () => clearTimeout(audioWarmTimer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [audioPrefetchKey, imagePrefetchKey]);
+  }, [mainContentURL, audioPrefetchKey, imagePrefetchKey]);
   
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   

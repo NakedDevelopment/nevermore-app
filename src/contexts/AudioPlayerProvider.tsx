@@ -180,7 +180,7 @@ function useAudioChannel(
       // Always pause before loading new audio to prevent overlap
       player.pause();
 
-      const cachedUri = await audioCacheService.getPlayableUri(uri);
+      const cachedUri = await audioCacheService.getAudioUri(uri);
       if (operationId !== operationIdRef.current) return;
 
       const audioSource: AudioSource = { uri: cachedUri };
@@ -246,7 +246,7 @@ function useAudioChannel(
         player.pause();
       }
 
-      const cachedUri = await audioCacheService.getPlayableUri(uri);
+      const cachedUri = await audioCacheService.getAudioUri(uri);
       if (operationId !== operationIdRef.current) return;
 
       const audioSource: AudioSource = { uri: cachedUri };

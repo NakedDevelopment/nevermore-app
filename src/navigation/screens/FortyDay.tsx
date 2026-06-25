@@ -168,36 +168,6 @@ export const FortyDay = () => {
     }
   }, [days, currentDay, activeIndex]);
 
-  // Prepare audio metadata when switching days so duration is available before play.
-  useEffect(() => {
-    const activeDay = days[activeIndex];
-    let cancelled = false;
-
-    const prepareAudio = async () => {
-      // If this day's audio is already the loaded track, leave it alone so
-      // returning to the tab doesn't interrupt audio playing across navigation.
-      if (activeDay?.audioUrl && audioPlayer.currentUri === activeDay.audioUrl) {
-        return;
-      }
-
-      if (activeDay?.audioUrl) {
-        await audioPlayer.loadAudio(activeDay.audioUrl);
-        return;
-      }
-
-      if (!cancelled) {
-        await audioPlayer.unloadAudio();
-      }
-    };
-
-    prepareAudio();
-
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeIndex, days[activeIndex]?.audioUrl]);
-
   const currentDayData = days[activeIndex];
 
   useEffect(() => {
@@ -212,12 +182,19 @@ export const FortyDay = () => {
     });
 
     const nextDayAudioUrl = days[activeIndex + 1]?.audioUrl;
-    if (!nextDayAudioUrl) {
+    const currentDayAudioUrl = days[activeIndex]?.audioUrl;
+    const audioUrlsToWarm = [currentDayAudioUrl, nextDayAudioUrl].filter(
+      (audioUrl): audioUrl is string => !!audioUrl
+    );
+
+    if (audioUrlsToWarm.length === 0) {
       return;
     }
 
     const warmTimer = setTimeout(() => {
-      audioCacheService.warmAudio(nextDayAudioUrl).catch(() => {});
+      audioUrlsToWarm.forEach((audioUrl) => {
+        audioCacheService.warmAudio(audioUrl).catch(() => {});
+      });
     }, 1200);
 
     return () => clearTimeout(warmTimer);
@@ -292,17 +269,15 @@ export const FortyDay = () => {
   };
 
   const handlePlayPause = async (audioUrl: string) => {
-    if (audioPlayer.isLoading) {
-      return; // Don't do anything if already loading
+    if (audioPlayer.loadingUri === audioUrl) {
+      return;
     }
 
-    // If playing, just pause
-    if (audioPlayer.isPlaying) {
+    if (audioPlayer.currentUri === audioUrl && audioPlayer.isPlaying) {
       await audioPlayer.pause();
       return;
     }
 
-    // Load and play audio in one call to avoid React state race condition
     await audioPlayer.loadAndPlay(audioUrl);
   };
 
@@ -311,6 +286,7 @@ export const FortyDay = () => {
     const isLocked = !hasFullAccess;
     const dayTitleFontSize = getDayTitleFontSize(item.title);
     const isItemLoading = isCurrentItem && !!item.audioUrl && audioPlayer.isLoading && audioPlayer.loadingUri === item.audioUrl;
+    const isItemAudioLoaded = isCurrentItem && !!item.audioUrl && audioPlayer.currentUri === item.audioUrl;
 
     const cardContent = (
       <View style={styles.card}>
@@ -368,7 +344,7 @@ export const FortyDay = () => {
                   <TouchableOpacity
                     style={[styles.audioControlBtn, !item.audioUrl && styles.mediaIconAreaDisabled]}
                     onPress={() => isCurrentItem && audioPlayer.seekBackward(10)}
-                    disabled={!item.audioUrl || isItemLoading}
+                    disabled={!item.audioUrl || !isItemAudioLoaded || isItemLoading}
                   >
                     <BackwardIcon width={32} height={32} />
                   </TouchableOpacity>
@@ -379,7 +355,7 @@ export const FortyDay = () => {
                   >
                     {isItemLoading ? (
                       <ActivityIndicator size="small" color="#FFFFFF" />
-                    ) : isCurrentItem && audioPlayer.isPlaying ? (
+                    ) : isItemAudioLoaded && audioPlayer.isPlaying ? (
                       <PauseIcon width={36} height={36} />
                     ) : (
                       <PlayIcon width={36} height={36} />
@@ -388,14 +364,14 @@ export const FortyDay = () => {
                   <TouchableOpacity
                     style={[styles.audioControlBtn, !item.audioUrl && styles.mediaIconAreaDisabled]}
                     onPress={() => isCurrentItem && audioPlayer.seekForward(10)}
-                    disabled={!item.audioUrl || isItemLoading}
+                    disabled={!item.audioUrl || !isItemAudioLoaded || isItemLoading}
                   >
                     <Forward10Icon width={32} height={32} />
                   </TouchableOpacity>
                 </View>
                 {isCurrentItem && item.audioUrl && (
                   <Text style={styles.audioDuration}>
-                    {isItemLoading ? '--:--' : audioPlayer.totalTime}
+                    {isItemAudioLoaded && !isItemLoading ? audioPlayer.totalTime : '--:--'}
                   </Text>
                 )}
               </View>
