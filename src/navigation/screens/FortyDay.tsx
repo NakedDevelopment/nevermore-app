@@ -3,13 +3,13 @@ import {
   View,
   Text,
   StyleSheet,
-  Image,
   ImageBackground,
   TouchableOpacity,
   Dimensions,
   Pressable,
   ActivityIndicator,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { useFocusEffect } from '@react-navigation/native';
 import { DrawerActions } from '@react-navigation/native';
 import { useAppNavigation } from '../../hooks/useAppNavigation';
@@ -199,6 +199,29 @@ export const FortyDay = () => {
 
     return () => clearTimeout(warmTimer);
   }, [activeIndex, days]);
+
+  useEffect(() => {
+    if (days.length === 0) {
+      return;
+    }
+
+    const prefetchTimer = setTimeout(() => {
+      const uniqueIcons = new Set<string>();
+      days.forEach((day) => {
+        day.tasks.forEach((task) => {
+          if (task.icon) {
+            uniqueIcons.add(task.icon);
+          }
+        });
+      });
+
+      uniqueIcons.forEach((iconUrl) => {
+        Image.prefetch(iconUrl).catch(() => {});
+      });
+    }, 3000);
+
+    return () => clearTimeout(prefetchTimer);
+  }, [days]);
 
   const selectDayIndex = (index: number) => {
     if (index < 0 || index >= days.length || index === activeIndex) {
@@ -548,7 +571,14 @@ export const FortyDay = () => {
                         >
                           <View style={styles.taskLeft}>
                             <View style={styles.soundWaveContainer}>
-                              <Image source={taskIconSource} style={styles.ravenIcon} />
+                              <Image
+                                source={taskIconSource}
+                                style={styles.ravenIcon}
+                                contentFit="contain"
+                                cachePolicy="memory-disk"
+                                priority="high"
+                                transition={120}
+                              />
                             </View>
                             <View style={styles.taskTextContainer}>
                               <Text style={styles.taskTitle} numberOfLines={2} ellipsizeMode="tail">
@@ -579,7 +609,14 @@ export const FortyDay = () => {
                         <View style={styles.taskItem}>
                           <View style={styles.taskLeft}>
                             <View style={styles.soundWaveContainer}>
-                              <Image source={taskIconSource} style={styles.ravenIcon} />
+                              <Image
+                                source={taskIconSource}
+                                style={styles.ravenIcon}
+                                contentFit="contain"
+                                cachePolicy="memory-disk"
+                                priority="high"
+                                transition={120}
+                              />
                             </View>
                             <View style={styles.taskTextContainer}>
                               <Text style={styles.taskTitle} numberOfLines={2} ellipsizeMode="tail">

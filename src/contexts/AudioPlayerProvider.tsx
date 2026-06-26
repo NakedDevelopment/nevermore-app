@@ -75,6 +75,8 @@ const isPlayerAtEnd = (player: AudioPlayer): boolean => {
   }
 };
 
+const isRemoteUri = (uri: string): boolean => /^https?:\/\//i.test(uri);
+
 const configureBackgroundAudioSession = async () => {
   await setAudioModeAsync({
     playsInSilentMode: true,
@@ -120,6 +122,84 @@ function useAudioChannel(
     const durationMs = player.duration * 1000;
     setTotalTime(isFinite(player.duration) && player.duration > 0 ? formatTime(durationMs) : '--:--');
     setProgress(player.duration > 0 && isFinite(player.duration) ? player.currentTime / player.duration : 0);
+  };
+
+  const waitForPlaybackProgress = async (
+    operationId: number,
+    maxAttempts = 14,
+    intervalMs = 150
+  ): Promise<boolean> => {
+    let attempts = 0;
+    while (attempts < maxAttempts) {
+      if (operationId !== operationIdRef.current) return false;
+      try {
+        if (player.playing && player.currentTime > 0.05) {
+          return true;
+        }
+      } catch {
+        return false;
+      }
+      await new Promise(resolve => setTimeout(resolve, intervalMs));
+      attempts++;
+    }
+
+    try {
+      return player.playing && player.currentTime > 0.05;
+    } catch {
+      return false;
+    }
+  };
+
+  const playResolvedSource = async (
+    uri: string,
+    resolvedUri: string,
+    operationId: number
+  ): Promise<void> => {
+    const audioSource: AudioSource = { uri: resolvedUri };
+    await player.replace(audioSource);
+    if (operationId !== operationIdRef.current) return;
+
+    setIsMuted(false);
+    previousVolumeRef.current = 1.0;
+    player.volume = 1.0;
+
+    setCurrentTime('00:00');
+    setTotalTime(isFinite(player.duration) && player.duration > 0 ? formatTime(player.duration * 1000) : '--:--');
+    setProgress(0);
+    setCurrentUri(uri);
+
+    await setIsAudioActiveAsync(true);
+    await player.play();
+    setIsPlaying(true);
+    void syncDurationWhenAvailable(operationId);
+  };
+
+  const fallBackToCachedPlayback = async (uri: string, operationId: number): Promise<void> => {
+    try {
+      if (operationId !== operationIdRef.current) return;
+
+      setIsLoading(true);
+      setLoadingUri(uri);
+      player.pause();
+
+      const cachedUri = await audioCacheService.getAudioUri(uri);
+      if (operationId !== operationIdRef.current) return;
+
+      await playResolvedSource(uri, cachedUri, operationId);
+    } catch (error) {
+      if (operationId !== operationIdRef.current) return;
+      console.error('Error falling back to cached audio:', error);
+      setCurrentUri(null);
+      setIsPlaying(false);
+      setCurrentTime('00:00');
+      setTotalTime('--:--');
+      setProgress(0);
+    } finally {
+      if (operationId === operationIdRef.current) {
+        setIsLoading(false);
+        setLoadingUri(null);
+      }
+    }
   };
 
   // Sync player state with React state
@@ -246,27 +326,23 @@ function useAudioChannel(
         player.pause();
       }
 
-      const cachedUri = await audioCacheService.getAudioUri(uri);
+      const playableUri = await audioCacheService.getPlayableUri(uri);
       if (operationId !== operationIdRef.current) return;
 
-      const audioSource: AudioSource = { uri: cachedUri };
-      await player.replace(audioSource);
+      await playResolvedSource(uri, playableUri, operationId);
       if (operationId !== operationIdRef.current) return;
 
-      setIsMuted(false);
-      previousVolumeRef.current = 1.0;
-      player.volume = 1.0;
+      if (isRemoteUri(uri) && playableUri === uri) {
+        const started = await waitForPlaybackProgress(operationId);
+        if (!started && operationId === operationIdRef.current) {
+          await fallBackToCachedPlayback(uri, operationId);
+          return;
+        }
 
-      setCurrentTime('00:00');
-      setTotalTime(isFinite(player.duration) && player.duration > 0 ? formatTime(player.duration * 1000) : '--:--');
-      setProgress(0);
-
-      setCurrentUri(uri);
-
-      await setIsAudioActiveAsync(true);
-      await player.play();
-      setIsPlaying(true);
-      void syncDurationWhenAvailable(operationId);
+        audioCacheService.warmAudio(uri).catch((error) => {
+          console.warn('Failed to warm streamed audio cache:', error);
+        });
+      }
     } catch (error) {
       if (operationId !== operationIdRef.current) return;
       console.error('Error loading and playing audio:', error);
@@ -343,6 +419,7 @@ function useAudioChannel(
   };
 
   const pause = async () => {
+    operationIdRef.current++;
     try {
       if (!currentUri) {
         return;
