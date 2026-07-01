@@ -221,8 +221,11 @@ function useAudioChannel(
             setIsPlaying(false);
             setProgress(1);
           }
-        } catch {
-          // native player already released
+        } catch (error) {
+          // Native player became unreadable (e.g. released). Log it instead
+          // of silently swallowing, since this previously left the UI frozen
+          // on stale time/progress with no diagnostic trail.
+          console.warn('AudioPlayerProvider: failed to read player state', error);
         }
       }, 250);
     } else {
@@ -313,7 +316,6 @@ function useAudioChannel(
             setProgress(0);
           }
           await setIsAudioActiveAsync(true);
-          onPlayStart();
           await player.play();
           setIsPlaying(true);
         }

@@ -2,7 +2,11 @@ import * as FileSystem from 'expo-file-system';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const AUDIO_CACHE_DIR = `${FileSystem.cacheDirectory}audio/`;
-const CACHE_INDEX_KEY = '@audio_cache_index';
+// v2: cached files are now named by their real content type instead of a
+// URL-based guess (which was always wrong for extension-less Appwrite
+// Storage URLs). Bumping the key drops old, possibly mislabeled entries so
+// they get re-downloaded and re-extensioned correctly.
+const CACHE_INDEX_KEY = '@audio_cache_index_v2';
 
 interface CacheEntry {
   remoteUrl: string;
@@ -49,6 +53,33 @@ class AudioCacheService {
       }
     } catch {}
     return 'mp3'; // Default to mp3
+  }
+
+  /**
+   * Map an HTTP Content-Type/mimeType to a file extension. Needed because
+   * Appwrite Storage "view" URLs (used for all CMS audio) never carry a real
+   * file extension in the path, so `getExtension` can only guess 'mp3' from
+   * the URL. Caching a non-MP3 file under a forced `.mp3` name causes native
+   * decoders to misidentify the container: playback and elapsed-time tracking
+   * still work, but duration/seek metadata parsing silently fails.
+   */
+  private getExtensionFromMimeType(mimeType: string | null | undefined): string | null {
+    if (!mimeType) return null;
+    const normalized = mimeType.split(';')[0].trim().toLowerCase();
+    const map: Record<string, string> = {
+      'audio/mpeg': 'mp3',
+      'audio/mp3': 'mp3',
+      'audio/wav': 'wav',
+      'audio/x-wav': 'wav',
+      'audio/wave': 'wav',
+      'audio/mp4': 'm4a',
+      'audio/x-m4a': 'm4a',
+      'audio/aac': 'aac',
+      'audio/ogg': 'ogg',
+      'application/ogg': 'ogg',
+      'audio/webm': 'webm',
+    };
+    return map[normalized] ?? null;
   }
 
   /**
@@ -244,17 +275,32 @@ class AudioCacheService {
       return this.downloadPromises[hash];
     }
 
-    const ext = this.getExtension(remoteUrl);
-    const localPath = `${AUDIO_CACHE_DIR}${hash}.${ext}`;
+    const guessedExt = this.getExtension(remoteUrl);
+    let localPath = `${AUDIO_CACHE_DIR}${hash}.${guessedExt}`;
 
     this.downloadPromises[hash] = (async () => {
       console.log('Downloading audio to cache:', remoteUrl);
-      
+
       const downloadResult = await FileSystem.downloadAsync(remoteUrl, localPath);
 
       if (downloadResult.status !== 200) {
         console.warn('Audio download failed with status:', downloadResult.status);
         return remoteUrl; // Fall back to streaming
+      }
+
+      // The URL rarely carries a real extension (Appwrite Storage "view"
+      // URLs never do), so re-derive it from the actual response content
+      // type and rename the file if our URL-based guess was wrong.
+      const contentType = downloadResult.mimeType ?? downloadResult.headers?.['Content-Type'] ?? downloadResult.headers?.['content-type'];
+      const realExt = this.getExtensionFromMimeType(contentType);
+      if (realExt && realExt !== guessedExt) {
+        const correctedPath = `${AUDIO_CACHE_DIR}${hash}.${realExt}`;
+        try {
+          await FileSystem.moveAsync({ from: localPath, to: correctedPath });
+          localPath = correctedPath;
+        } catch (error) {
+          console.warn('Failed to rename cached audio to its real extension:', error);
+        }
       }
 
       // Save to index
