@@ -475,6 +475,13 @@ function useAudioChannel(
 
   const pause = async () => {
     operationIdRef.current++;
+    // Bumping operationIdRef cancels any in-flight play()/loadAndPlay(), but
+    // play()'s own loading-state cleanup is gated on that same id and won't
+    // run once cancelled — so pause() must clear it here itself, same as
+    // stop()/pauseFromCoordinator() already do, or the play button gets
+    // stuck on its loading spinner after a fast pause during a play attempt.
+    setIsLoading(false);
+    setLoadingUri(null);
     try {
       if (!currentUri) {
         return;

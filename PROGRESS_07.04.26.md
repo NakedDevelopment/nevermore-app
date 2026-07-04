@@ -376,3 +376,29 @@ env-key and Android signing items above:
    to playing from 0 rather than throwing. Verified with `tsc --noEmit` (no
    new errors). Still needs on-device verification — same caveat as the rest
    of this file's audio changes, this sandbox has no simulator/emulator.
+
+## Update — new regression on build #79: play button stuck loading after fast pause/play/pause
+
+Client tested build #79 (which includes the fixes above) and reported
+"glitches" — specifically, pause → play → pause in quick succession leaves
+the UI looking broken.
+
+**Root cause: introduced by this session's own earlier fix.** The
+double-tap guard added to `play()` bumps `operationIdRef` and gates its
+`finally` block's `setIsLoading(false)`/`setLoadingUri(null)` cleanup on
+that operation still being current — intentional, so a stale `play()` can't
+clobber state after a newer operation has taken over. But `pause()` is
+exactly the thing that invalidates an in-flight `play()` (it also bumps
+`operationIdRef`), and unlike `stop()`/`pauseFromCoordinator()` — which both
+already reset `isLoading`/`loadingUri` when they do this — plain `pause()`
+never did. Result: tap play, tap pause while `play()` is still awaiting
+`setIsAudioActiveAsync`/`player.play()`, and `play()`'s cancelled `finally`
+skips the cleanup while `pause()` never picks it up either — the play
+button is left stuck on its loading spinner indefinitely, regardless of
+the audio's actual (correctly paused) state.
+
+**Fix:** `pause()` now resets `isLoading`/`loadingUri` unconditionally right
+after bumping `operationIdRef`, matching the pattern already used by
+`stop()` and `pauseFromCoordinator()`. Verified with `tsc --noEmit` (no new
+errors). Not yet re-verified on-device — same sandbox limitation as above;
+needs the client to re-test the pause/play/pause sequence on the next build.
