@@ -1,8 +1,10 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import { View, Text, StyleSheet, StatusBar, TouchableOpacity, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { Button } from '../../components/Button';
+import { ConfirmationModal } from '../../components/ConfirmationModal';
+import SignOutIcon from '../../assets/icons/sign-out';
 import { ScreenNames } from '../../constants/ScreenNames';
 import { useAuthStore } from '../../store/authStore';
 import { useSubscriptionStore } from '../../store/subscriptionStore';
@@ -11,6 +13,7 @@ export function TrialExpired() {
   const navigation = useNavigation<any>();
   const { signOut } = useAuthStore();
   const { restorePurchases, getRestorePurchaseStatus, isLoading } = useSubscriptionStore();
+  const [showSignOutConfirmation, setShowSignOutConfirmation] = useState(false);
 
   const handleSubscribe = useCallback(() => {
     navigation.navigate(ScreenNames.SUBSCRIPTION);
@@ -43,12 +46,21 @@ export function TrialExpired() {
     }
   }, [navigation, restorePurchases, getRestorePurchaseStatus]);
 
-  const handleLogout = useCallback(async () => {
-    await signOut();
-    navigation.reset({
-      index: 0,
-      routes: [{ name: ScreenNames.WELCOME }],
-    });
+  const handleSignOutPress = useCallback(() => {
+    setShowSignOutConfirmation(true);
+  }, []);
+
+  const handleConfirmSignOut = useCallback(async () => {
+    try {
+      setShowSignOutConfirmation(false);
+      await signOut();
+      navigation.reset({
+        index: 0,
+        routes: [{ name: ScreenNames.WELCOME }],
+      });
+    } catch (error) {
+      Alert.alert('Error', 'Failed to sign out. Please try again.');
+    }
   }, [navigation, signOut]);
 
   return (
@@ -78,14 +90,27 @@ export function TrialExpired() {
             <Text style={styles.linkButtonText}>Restore Purchase</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={styles.linkButton}
-            onPress={handleLogout}
+            style={styles.signOutButton}
+            onPress={handleSignOutPress}
             disabled={isLoading}
+            activeOpacity={0.7}
           >
-            <Text style={styles.logoutText}>Log out</Text>
+            <SignOutIcon color="#EF4444" width={18} height={18} />
+            <Text style={styles.signOutButtonText}>Sign Out</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
+
+      <ConfirmationModal
+        visible={showSignOutConfirmation}
+        title="Sign Out"
+        description="Are you sure you want to sign out?"
+        cancelText="Cancel"
+        confirmText="Sign Out"
+        onCancel={() => setShowSignOutConfirmation(false)}
+        onConfirm={handleConfirmSignOut}
+        confirmButtonColor="#EF4444"
+      />
     </View>
   );
 }
@@ -132,9 +157,20 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: 'Roboto_500Medium',
   },
-  logoutText: {
+  signOutButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    minHeight: 48,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.4)',
+    backgroundColor: 'rgba(239, 68, 68, 0.08)',
+  },
+  signOutButtonText: {
     color: '#EF4444',
-    fontSize: 14,
+    fontSize: 16,
     fontFamily: 'Roboto_500Medium',
   },
 });

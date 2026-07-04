@@ -124,16 +124,34 @@ function useAudioChannel(
     setProgress(player.duration > 0 && isFinite(player.duration) ? player.currentTime / player.duration : 0);
   };
 
+  const isStreamingCleanly = (): boolean => {
+    // Advancing currentTime alone isn't enough: a container the native
+    // decoder can't identify from an extensionless streaming URL (common for
+    // non-mp3 Support-role tracks) can still report a moving currentTime
+    // while duration/seek metadata stays corrupted, leaving the progress bar
+    // and 10s buttons dead. Require duration too, so that case is treated as
+    // a failed stream and falls back to the cached, correctly-extensioned file.
+    return (
+      player.playing &&
+      player.currentTime > 0.05 &&
+      isFinite(player.duration) &&
+      player.duration > 0
+    );
+  };
+
   const waitForPlaybackProgress = async (
     operationId: number,
-    maxAttempts = 14,
-    intervalMs = 150
+    // Wide enough that a legitimately-streaming file whose duration metadata
+    // just resolves slowly over a throttled connection isn't misdiagnosed as
+    // the corrupted-metadata case and forced through a full re-download.
+    maxAttempts = 30,
+    intervalMs = 200
   ): Promise<boolean> => {
     let attempts = 0;
     while (attempts < maxAttempts) {
       if (operationId !== operationIdRef.current) return false;
       try {
-        if (player.playing && player.currentTime > 0.05) {
+        if (isStreamingCleanly()) {
           return true;
         }
       } catch {
@@ -144,7 +162,7 @@ function useAudioChannel(
     }
 
     try {
-      return player.playing && player.currentTime > 0.05;
+      return isStreamingCleanly();
     } catch {
       return false;
     }
@@ -153,7 +171,8 @@ function useAudioChannel(
   const playResolvedSource = async (
     uri: string,
     resolvedUri: string,
-    operationId: number
+    operationId: number,
+    resumeFromSec?: number
   ): Promise<void> => {
     const audioSource: AudioSource = { uri: resolvedUri };
     await player.replace(audioSource);
@@ -163,9 +182,24 @@ function useAudioChannel(
     previousVolumeRef.current = 1.0;
     player.volume = 1.0;
 
-    setCurrentTime('00:00');
-    setTotalTime(isFinite(player.duration) && player.duration > 0 ? formatTime(player.duration * 1000) : '--:--');
-    setProgress(0);
+    const shouldResume = typeof resumeFromSec === 'number' && isFinite(resumeFromSec) && resumeFromSec > 0.05;
+    if (shouldResume) {
+      try {
+        // Land the cached file at the same spot the stream had already
+        // reached, so falling back mid-playback doesn't read as a restart.
+        await player.seekTo(resumeFromSec);
+      } catch {
+        // Some platforms can't seek before the newly-loaded source is
+        // ready — fall through and just play from 0 rather than failing.
+      }
+      if (operationId !== operationIdRef.current) return;
+      setCurrentTime(formatTime(resumeFromSec * 1000));
+    } else {
+      setCurrentTime('00:00');
+    }
+    const durationKnown = isFinite(player.duration) && player.duration > 0;
+    setTotalTime(durationKnown ? formatTime(player.duration * 1000) : '--:--');
+    setProgress(durationKnown && shouldResume ? resumeFromSec / player.duration : 0);
     setCurrentUri(uri);
 
     await setIsAudioActiveAsync(true);
@@ -178,6 +212,18 @@ function useAudioChannel(
     try {
       if (operationId !== operationIdRef.current) return;
 
+      // Capture how far the stream had already gotten before we tear it
+      // down — a corrupted-metadata track that never got past currentTime
+      // 0 still resumes at 0 (no behavior change), but a track that was
+      // already audibly playing resumes where the user heard it, instead
+      // of restarting from the top once the cached copy takes over.
+      let resumeFromSec = 0;
+      try {
+        resumeFromSec = isFinite(player.currentTime) ? player.currentTime : 0;
+      } catch {
+        resumeFromSec = 0;
+      }
+
       setIsLoading(true);
       setLoadingUri(uri);
       player.pause();
@@ -185,7 +231,7 @@ function useAudioChannel(
       const cachedUri = await audioCacheService.getAudioUri(uri);
       if (operationId !== operationIdRef.current) return;
 
-      await playResolvedSource(uri, cachedUri, operationId);
+      await playResolvedSource(uri, cachedUri, operationId, resumeFromSec);
     } catch (error) {
       if (operationId !== operationIdRef.current) return;
       console.error('Error falling back to cached audio:', error);
@@ -394,6 +440,7 @@ function useAudioChannel(
   };
 
   const play = async () => {
+    const operationId = ++operationIdRef.current;
     try {
       if (!currentUri) {
         return;
@@ -404,19 +451,25 @@ function useAudioChannel(
         setLoadingUri(currentUri);
         if (isPlayerAtEnd(player)) {
           await player.seekTo(0);
+          if (operationId !== operationIdRef.current) return;
           setCurrentTime('00:00');
           setProgress(0);
         }
         await setIsAudioActiveAsync(true);
+        if (operationId !== operationIdRef.current) return;
         onPlayStart();
         await player.play();
+        if (operationId !== operationIdRef.current) return;
         setIsPlaying(true);
       }
     } catch (error) {
+      if (operationId !== operationIdRef.current) return;
       setIsPlaying(false);
     } finally {
-      setIsLoading(false);
-      setLoadingUri(null);
+      if (operationId === operationIdRef.current) {
+        setIsLoading(false);
+        setLoadingUri(null);
+      }
     }
   };
 
@@ -465,7 +518,7 @@ function useAudioChannel(
 
   const seekForward = async (seconds: number) => {
     try {
-      if (!currentUri || player.duration === 0) {
+      if (!currentUri || !isFinite(player.duration) || player.duration <= 0) {
         return;
       }
 
@@ -492,7 +545,7 @@ function useAudioChannel(
 
   const seekTo = async (progressValue: number) => {
     try {
-      if (!currentUri || player.duration === 0) {
+      if (!currentUri || !isFinite(player.duration) || player.duration <= 0) {
         return;
       }
 
@@ -601,7 +654,12 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
       console.warn('Failed to configure audio mode:', error);
     });
 
-    const subscription = AppState.addEventListener('change', () => {
+    // Only re-arm on return to foreground. Re-running this on every
+    // transition (including going to background/inactive) risked fighting
+    // the OS's own interruption handling, e.g. re-activating the session
+    // right as a phone call or Siri interruption was taking it over.
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      if (nextAppState !== 'active') return;
       configureBackgroundAudioSession().catch((error) => {
         console.warn('Failed to keep audio session active:', error);
       });

@@ -25,7 +25,7 @@ The active entitlement checked by the app is:
 Lou Knows LLC Pro
 ```
 
-The app also checks normalized fallbacks (`lou_knows_llc_pro`, `lou-knows-llc-pro`, `pro`) to reduce dashboard naming mistakes, but the intended RevenueCat entitlement identifier is `Lou Knows LLC Pro`.
+Since the app has exactly one paid tier, subscription status is actually determined by whether the customer has ANY active entitlement (not by matching this name) — so a dashboard naming mismatch can't lock out a paying user. The name above is still used as the `requiredEntitlementIdentifier` when presenting the RevenueCat paywall (`RevenueCatUI.presentPaywallIfNeeded`), so it must exactly match the entitlement identifier configured in the dashboard for the paywall gate itself to work.
 
 ## RevenueCat dashboard checklist
 

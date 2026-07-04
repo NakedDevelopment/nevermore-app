@@ -10,6 +10,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Navigation } from './navigation';
 import { AudioPlayerProvider } from './contexts/AudioPlayerProvider';
 import { ExpoImageSplashScreen } from './components/ExpoImageSplashScreen';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { useAuthStore } from './store/authStore';
 import { useSubscriptionStore } from './store/subscriptionStore';
 import { iapService } from './services/iap.service';
@@ -17,6 +18,14 @@ import { iapService } from './services/iap.service';
 SplashScreen.preventAutoHideAsync();
 
 export function App() {
+  return (
+    <ErrorBoundary>
+      <AppContent />
+    </ErrorBoundary>
+  );
+}
+
+function AppContent() {
   const colorScheme = useColorScheme();
   const [cinzelFontsLoaded] = useFonts({
     Cinzel_400Regular,

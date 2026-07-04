@@ -584,6 +584,25 @@ export function Navigation(props?: any) {
     return () => clearInterval(intervalId);
   }, [isAuthenticated, isOnboardingComplete, isSubscribed, isSharedAccessActive, isTrialExpired, trialStartDate, navigationRef]);
 
+  // The block above only ever navigates TO TrialExpired, never away from it.
+  // A subscriber who lands there from a slow/stale subscription check (or
+  // whose entitlement is granted while sitting on the screen, e.g. restored
+  // on another device) would otherwise be stuck until they manually tap
+  // Restore Purchase. Release the hard block automatically once isSubscribed
+  // (or shared access) becomes true.
+  useEffect(() => {
+    if (!isSubscribed && !isSharedAccessActive) return;
+    if (!navigationRef.isReady()) return;
+
+    const currentRouteName = navigationRef.getCurrentRoute()?.name;
+    if (currentRouteName !== ScreenNames.TRIAL_EXPIRED) return;
+
+    navigationRef.reset({
+      index: 0,
+      routes: [{ name: ScreenNames.HOME_TABS as any }],
+    } as any);
+  }, [isSubscribed, isSharedAccessActive, navigationRef]);
+
   return (
     <NavigationContainer
       ref={navigationRef}

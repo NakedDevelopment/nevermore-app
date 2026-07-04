@@ -204,6 +204,31 @@ export default function TemptationDetails() {
     await mainContentAudioPlayer.loadAndPlay(mainContentURL);
   }, [isActiveMainTrack, isMainTrackActiveOrBuffering, mainContentAudioPlayer, reflectionAudioPlayer, mainContentURL]);
 
+  // Recovery and Support share the same global 'main' channel, so switching
+  // tabs while audio plays leaves this tab showing inactive controls for a
+  // track that's still playing under the other tab. Gate every control but
+  // Play/Pause (which already checks isActiveMainTrack) so an inactive tab
+  // can't silently rewind/seek/stop audio that belongs to the other tab.
+  const handleMainRewind = React.useCallback(async () => {
+    if (!isActiveMainTrack) return;
+    await mainContentAudioPlayer.rewind();
+  }, [isActiveMainTrack, mainContentAudioPlayer]);
+
+  const handleMainForward = React.useCallback(async () => {
+    if (!isActiveMainTrack) return;
+    await mainContentAudioPlayer.forward();
+  }, [isActiveMainTrack, mainContentAudioPlayer]);
+
+  const handleMainStop = React.useCallback(async () => {
+    if (!isActiveMainTrack) return;
+    await mainContentAudioPlayer.stop();
+  }, [isActiveMainTrack, mainContentAudioPlayer]);
+
+  const handleMainSeek = React.useCallback(async (progress: number) => {
+    if (!isActiveMainTrack) return;
+    await mainContentAudioPlayer.seekTo(progress);
+  }, [isActiveMainTrack, mainContentAudioPlayer]);
+
   const handleQuestionSelect = React.useCallback(
     async (index: number) => {
       await mainContentAudioPlayer.pause();
@@ -327,10 +352,10 @@ export default function TemptationDetails() {
             totalTime={isActiveMainTrack ? mainContentAudioPlayer.totalTime : '--:--'}
             progress={isActiveMainTrack ? mainContentAudioPlayer.progress : 0}
             onPlayPause={handleMainPlayPause}
-            onRewind={mainContentAudioPlayer.rewind}
-            onForward={mainContentAudioPlayer.forward}
-            onStop={mainContentAudioPlayer.stop}
-            onSeek={mainContentAudioPlayer.seekTo}
+            onRewind={handleMainRewind}
+            onForward={handleMainForward}
+            onStop={handleMainStop}
+            onSeek={handleMainSeek}
           />
         )}
 

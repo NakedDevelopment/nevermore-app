@@ -35,19 +35,24 @@ export type SubscriptionProducts = {
 
 export const REVENUECAT_ENTITLEMENT_ID = 'Lou Knows LLC Pro';
 
-const ENTITLEMENT_IDS = [
-  REVENUECAT_ENTITLEMENT_ID,
-  'lou_knows_llc_pro',
-  'lou-knows-llc-pro',
-  'pro',
-];
-
+// The app has exactly one paid tier, so instead of matching a hardcoded list
+// of guessed entitlement identifier strings (which silently locks every user
+// out of content they paid for if the real RevenueCat entitlement identifier
+// doesn't match any of the guesses), treat ANY active entitlement as
+// "subscribed". This can't produce a false negative for a single-tier app.
+//
+// These product ids are RevenueCat's own product identifiers ('monthly' /
+// 'yearly' per REVENUECAT_SETUP.md), NOT the IAP_PRODUCT_ID_MONTHLY/YEARLY
+// env vars (those are leftover App Store/Play Store product ids from the old
+// react-native-iap integration, e.g. "com.nevermore.app.subscriptions.monthly",
+// and would break the substring match below if used here).
 const REVENUECAT_PRODUCT_IDS: Record<SubscriptionPlan, string> = {
   monthly: 'monthly',
   yearly: 'yearly',
 };
 
 let configured = false;
+let configuringPromise: Promise<boolean> | null = null;
 let customerInfoListener: CustomerInfoUpdateListener | null = null;
 let updateSubscription: ((value: boolean) => void) | null = null;
 
@@ -79,13 +84,8 @@ function isInvalidProductionRevenueCatKey(apiKey: string): boolean {
 
 function getActiveEntitlement(customerInfo: CustomerInfo | null | undefined) {
   if (!customerInfo) return null;
-  for (const entitlementId of ENTITLEMENT_IDS) {
-    const entitlement = customerInfo.entitlements.active[entitlementId];
-    if (entitlement?.isActive) {
-      return entitlement;
-    }
-  }
-  return null;
+  const [firstActive] = Object.values(customerInfo.entitlements.active);
+  return firstActive ?? null;
 }
 
 function hasActiveEntitlement(customerInfo: CustomerInfo | null | undefined): boolean {
@@ -159,30 +159,47 @@ async function ensureConfigured(): Promise<boolean> {
     return true;
   }
 
-  const apiKey = getRevenueCatApiKey();
-  if (!apiKey) {
-    console.warn('[RevenueCat] Missing API key. Subscriptions are disabled.');
-    return false;
+  // App.tsx fires iapService.init() and checkAuth() (which itself triggers a
+  // subscription check) without awaiting each other, so this can legitimately
+  // be entered concurrently. Share one in-flight configure() attempt instead
+  // of letting both callers call Purchases.configure() and register their
+  // own customerInfoListener.
+  if (configuringPromise) {
+    return configuringPromise;
   }
 
-  if (isInvalidProductionRevenueCatKey(apiKey)) {
-    console.warn('[RevenueCat] Test Store API keys cannot be used in production builds. Subscriptions are disabled.');
-    return false;
-  }
+  configuringPromise = (async () => {
+    const apiKey = getRevenueCatApiKey();
+    if (!apiKey) {
+      console.warn('[RevenueCat] Missing API key. Subscriptions are disabled.');
+      return false;
+    }
+
+    if (isInvalidProductionRevenueCatKey(apiKey)) {
+      console.warn('[RevenueCat] Test Store API keys cannot be used in production builds. Subscriptions are disabled.');
+      return false;
+    }
+
+    try {
+      await Purchases.setLogLevel(__DEV__ ? Purchases.LOG_LEVEL.DEBUG : Purchases.LOG_LEVEL.WARN);
+      Purchases.configure({ apiKey });
+      configured = true;
+
+      customerInfoListener = (customerInfo) => {
+        updateSubscription?.(hasActiveEntitlement(customerInfo));
+      };
+      Purchases.addCustomerInfoUpdateListener(customerInfoListener);
+      return true;
+    } catch (err) {
+      console.warn('[RevenueCat] configure error:', err);
+      return false;
+    }
+  })();
 
   try {
-    await Purchases.setLogLevel(__DEV__ ? Purchases.LOG_LEVEL.DEBUG : Purchases.LOG_LEVEL.WARN);
-    Purchases.configure({ apiKey });
-    configured = true;
-
-    customerInfoListener = (customerInfo) => {
-      updateSubscription?.(hasActiveEntitlement(customerInfo));
-    };
-    Purchases.addCustomerInfoUpdateListener(customerInfoListener);
-    return true;
-  } catch (err) {
-    console.warn('[RevenueCat] configure error:', err);
-    return false;
+    return await configuringPromise;
+  } finally {
+    configuringPromise = null;
   }
 }
 
