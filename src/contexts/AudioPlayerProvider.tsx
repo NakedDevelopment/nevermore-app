@@ -15,6 +15,7 @@ export interface AudioChannel {
   loadingUri: string | null;
   currentTime: string;
   totalTime: string;
+  remainingTime: string;
   progress: number;
   isMuted: boolean;
   currentUri: string | null;
@@ -105,6 +106,7 @@ function useAudioChannel(
   const [currentUri, setCurrentUri] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState('00:00');
   const [totalTime, setTotalTime] = useState('--:--');
+  const [remainingTime, setRemainingTime] = useState('--:--');
   const [progress, setProgress] = useState(0);
   const previousVolumeRef = useRef<number>(1.0);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -120,8 +122,10 @@ function useAudioChannel(
     if (operationId !== operationIdRef.current) return;
 
     const durationMs = player.duration * 1000;
-    setTotalTime(isFinite(player.duration) && player.duration > 0 ? formatTime(durationMs) : '--:--');
-    setProgress(player.duration > 0 && isFinite(player.duration) ? player.currentTime / player.duration : 0);
+    const durationKnown = isFinite(player.duration) && player.duration > 0;
+    setTotalTime(durationKnown ? formatTime(durationMs) : '--:--');
+    setRemainingTime(durationKnown ? formatTime(Math.max(0, durationMs - player.currentTime * 1000)) : '--:--');
+    setProgress(durationKnown ? player.currentTime / player.duration : 0);
   };
 
   const isStreamingCleanly = (): boolean => {
@@ -198,7 +202,9 @@ function useAudioChannel(
       setCurrentTime('00:00');
     }
     const durationKnown = isFinite(player.duration) && player.duration > 0;
+    const startPositionSec = shouldResume && typeof resumeFromSec === 'number' ? resumeFromSec : 0;
     setTotalTime(durationKnown ? formatTime(player.duration * 1000) : '--:--');
+    setRemainingTime(durationKnown ? formatTime(Math.max(0, (player.duration - startPositionSec) * 1000)) : '--:--');
     setProgress(durationKnown && shouldResume ? resumeFromSec / player.duration : 0);
     setCurrentUri(uri);
 
@@ -239,6 +245,7 @@ function useAudioChannel(
       setIsPlaying(false);
       setCurrentTime('00:00');
       setTotalTime('--:--');
+      setRemainingTime('--:--');
       setProgress(0);
     } finally {
       if (operationId === operationIdRef.current) {
@@ -260,9 +267,11 @@ function useAudioChannel(
           setIsPlaying(player.playing);
           const currentTimeMs = player.currentTime * 1000;
           const durationMs = player.duration * 1000;
+          const durationValid = isFinite(player.duration) && player.duration > 0;
           setCurrentTime(formatTime(currentTimeMs));
-          setTotalTime(isFinite(player.duration) && player.duration > 0 ? formatTime(durationMs) : '--:--');
-          setProgress(player.duration > 0 && isFinite(player.duration) ? player.currentTime / player.duration : 0);
+          setTotalTime(durationValid ? formatTime(durationMs) : '--:--');
+          setRemainingTime(durationValid ? formatTime(Math.max(0, durationMs - currentTimeMs)) : '--:--');
+          setProgress(durationValid ? player.currentTime / player.duration : 0);
           if (isPlayerAtEnd(player) && !player.playing) {
             setIsPlaying(false);
             setProgress(1);
@@ -278,6 +287,7 @@ function useAudioChannel(
       setIsPlaying(false);
       setCurrentTime('00:00');
       setTotalTime('--:--');
+      setRemainingTime('--:--');
       setProgress(0);
     }
 
@@ -321,7 +331,9 @@ function useAudioChannel(
       player.volume = 1.0;
 
       setCurrentTime('00:00');
-      setTotalTime(isFinite(player.duration) && player.duration > 0 ? formatTime(player.duration * 1000) : '--:--');
+      const durationKnown = isFinite(player.duration) && player.duration > 0;
+      setTotalTime(durationKnown ? formatTime(player.duration * 1000) : '--:--');
+      setRemainingTime(durationKnown ? formatTime(player.duration * 1000) : '--:--');
       setProgress(0);
 
       setCurrentUri(uri);
@@ -333,6 +345,7 @@ function useAudioChannel(
       setIsPlaying(false);
       setCurrentTime('00:00');
       setTotalTime('--:--');
+      setRemainingTime('--:--');
       setProgress(0);
     } finally {
       if (operationId !== null && operationId === operationIdRef.current) {
@@ -398,6 +411,7 @@ function useAudioChannel(
       setIsPlaying(false);
       setCurrentTime('00:00');
       setTotalTime('--:--');
+      setRemainingTime('--:--');
       setProgress(0);
     } finally {
       if (operationId === operationIdRef.current) {
@@ -425,6 +439,7 @@ function useAudioChannel(
       previousVolumeRef.current = 1.0;
       setCurrentTime('00:00');
       setTotalTime('--:--');
+      setRemainingTime('--:--');
       setProgress(0);
     } catch (error) {
       setCurrentUri(null);
@@ -435,6 +450,7 @@ function useAudioChannel(
       previousVolumeRef.current = 1.0;
       setCurrentTime('00:00');
       setTotalTime('--:--');
+      setRemainingTime('--:--');
       setProgress(0);
     }
   };
@@ -624,6 +640,7 @@ function useAudioChannel(
     loadingUri,
     currentTime,
     totalTime,
+    remainingTime,
     progress,
     isMuted,
     currentUri,

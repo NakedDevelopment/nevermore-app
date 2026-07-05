@@ -75,10 +75,8 @@ export const FortyDay = () => {
 
   const hasFullAccess = useHasFullAccess();
   const [subscriptionPopupVisible, setSubscriptionPopupVisible] = useState(false);
-  const [isDayTransitioning, setIsDayTransitioning] = useState(false);
 
   const carouselRef = useRef<ICarouselInstance | null>(null);
-  const dayTransitionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [activeIndex, setActiveIndex] = useState(() => {
     if (days.length === 0) return 0;
     return getChallengeDayIndex(days, currentDay);
@@ -95,14 +93,6 @@ export const FortyDay = () => {
 
   useEffect(() => {
     loadFortyDayContent();
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      if (dayTransitionTimeoutRef.current) {
-        clearTimeout(dayTransitionTimeoutRef.current);
-      }
-    };
   }, []);
 
   useFocusEffect(
@@ -228,18 +218,9 @@ export const FortyDay = () => {
       return;
     }
 
-    if (dayTransitionTimeoutRef.current) {
-      clearTimeout(dayTransitionTimeoutRef.current);
-    }
-
-    setIsDayTransitioning(true);
     setActiveIndex(index);
     setCurrentDay(days[index].day);
     (carouselRef.current as any)?.scrollTo?.({ index, animated: true });
-
-    dayTransitionTimeoutRef.current = setTimeout(() => {
-      setIsDayTransitioning(false);
-    }, 220);
   };
 
   const handlePrevious = () => {
@@ -394,7 +375,7 @@ export const FortyDay = () => {
                 </View>
                 {isCurrentItem && item.audioUrl && (
                   <Text style={styles.audioDuration}>
-                    {isItemAudioLoaded && !isItemLoading ? audioPlayer.totalTime : '--:--'}
+                    {isItemAudioLoaded && !isItemLoading ? audioPlayer.remainingTime : '--:--'}
                   </Text>
                 )}
               </View>
@@ -496,12 +477,8 @@ export const FortyDay = () => {
                   data={days}
                   renderItem={renderCarouselItem}
                   onSnapToItem={(index) => {
-                    if (dayTransitionTimeoutRef.current) {
-                      clearTimeout(dayTransitionTimeoutRef.current);
-                    }
                     setActiveIndex(index);
                     setCurrentDay(days[index].day);
-                    setIsDayTransitioning(false);
                   }}
                   defaultIndex={days.length > 0 ? getChallengeDayIndex(days, currentDay) : 0}
                   loop={false}
@@ -528,12 +505,7 @@ export const FortyDay = () => {
               <Text style={styles.tasksTitle}>Tasks for today</Text>
               
               <View style={styles.tasksList}>
-                {isDayTransitioning ? (
-                  <View style={styles.tasksTransitionState}>
-                    <ActivityIndicator size="small" color="#8B5CF6" />
-                    <Text style={styles.tasksTransitionText}>Loading tasks...</Text>
-                  </View>
-                ) : currentDayData?.tasks.map((task, index) => {
+                {currentDayData?.tasks.map((task, index) => {
                   const isLinked = !!task.contentId;
 
                   const linkRow = isLinked ? (
@@ -899,22 +871,6 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   tasksList: {
-  },
-  tasksTransitionState: {
-    minHeight: 74,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(139, 92, 246, 0.22)',
-    backgroundColor: 'rgba(139, 92, 246, 0.08)',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-  },
-  tasksTransitionText: {
-    fontFamily: 'Roboto_400Regular',
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.72)',
   },
   taskItemWrapper: {
     marginBottom: 12,
