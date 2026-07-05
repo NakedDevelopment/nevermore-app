@@ -2,11 +2,14 @@ import * as FileSystem from 'expo-file-system';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const AUDIO_CACHE_DIR = `${FileSystem.cacheDirectory}audio/`;
-// v2: cached files are now named by their real content type instead of a
-// URL-based guess (which was always wrong for extension-less Appwrite
-// Storage URLs). Bumping the key drops old, possibly mislabeled entries so
-// they get re-downloaded and re-extensioned correctly.
-const CACHE_INDEX_KEY = '@audio_cache_index_v2';
+// v3: cached files are named by sniffing the downloaded file's actual
+// container bytes (falling back to the HTTP content type), instead of a
+// URL-based guess which is always wrong for extension-less Appwrite Storage
+// URLs. A wrong extension still lets audio play but leaves the native decoder
+// unable to parse duration/seek metadata (dead progress bar + seek buttons).
+// Bumping the key drops old, possibly mislabeled entries so they get
+// re-downloaded and re-extensioned correctly.
+const CACHE_INDEX_KEY = '@audio_cache_index_v3';
 
 interface CacheEntry {
   remoteUrl: string;
@@ -80,6 +83,69 @@ class AudioCacheService {
       'audio/webm': 'webm',
     };
     return map[normalized] ?? null;
+  }
+
+  /**
+   * Decode the leading bytes of a base64 string into a byte array. Kept inline
+   * so header sniffing needs no extra base64 dependency.
+   */
+  private base64ToBytes(base64: string): number[] {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+    const bytes: number[] = [];
+    let buffer = 0;
+    let bits = 0;
+    for (let i = 0; i < base64.length; i++) {
+      const c = base64[i];
+      if (c === '=') break;
+      const idx = chars.indexOf(c);
+      if (idx === -1) continue;
+      buffer = (buffer << 6) | idx;
+      bits += 6;
+      if (bits >= 8) {
+        bits -= 8;
+        bytes.push((buffer >> bits) & 0xff);
+      }
+    }
+    return bytes;
+  }
+
+  /**
+   * Identify the true audio container from the file's leading "magic" bytes.
+   * This is far more reliable than the URL or HTTP content type for
+   * extension-less Appwrite Storage URLs, and giving the cached file its real
+   * extension is what lets native decoders parse duration/seek metadata.
+   * Returns null when the header isn't recognized.
+   */
+  private async detectExtensionFromContent(localPath: string): Promise<string | null> {
+    try {
+      const base64 = await FileSystem.readAsStringAsync(localPath, {
+        encoding: FileSystem.EncodingType.Base64,
+        position: 0,
+        length: 16,
+      });
+      const bytes = this.base64ToBytes(base64);
+      if (bytes.length < 4) return null;
+
+      // WAV: "RIFF"
+      if (bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46) return 'wav';
+      // OGG: "OggS"
+      if (bytes[0] === 0x4f && bytes[1] === 0x67 && bytes[2] === 0x67 && bytes[3] === 0x53) return 'ogg';
+      // WebM / Matroska (EBML): 0x1A 0x45 0xDF 0xA3
+      if (bytes[0] === 0x1a && bytes[1] === 0x45 && bytes[2] === 0xdf && bytes[3] === 0xa3) return 'webm';
+      // MP4 / M4A: "ftyp" box at offset 4
+      if (bytes.length >= 8 && bytes[4] === 0x66 && bytes[5] === 0x74 && bytes[6] === 0x79 && bytes[7] === 0x70) return 'm4a';
+      // ID3-tagged MP3: "ID3"
+      if (bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33) return 'mp3';
+      // MPEG-audio / ADTS-AAC frame sync: 0xFF 0xEx-0xFx
+      if (bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0) {
+        // ADTS AAC keeps the "layer" field (bits 1-2) at 00; MP3 sets it non-zero.
+        if ((bytes[1] & 0x06) === 0x00) return 'aac';
+        return 'mp3';
+      }
+      return null;
+    } catch {
+      return null;
+    }
   }
 
   /**
@@ -289,10 +355,14 @@ class AudioCacheService {
       }
 
       // The URL rarely carries a real extension (Appwrite Storage "view"
-      // URLs never do), so re-derive it from the actual response content
-      // type and rename the file if our URL-based guess was wrong.
+      // URLs never do). A wrong extension still plays but leaves the native
+      // decoder unable to parse duration/seek metadata, so determine the real
+      // container by sniffing the downloaded file's magic bytes, falling back
+      // to the HTTP content type, and rename the file if our URL-based guess
+      // was wrong.
       const contentType = downloadResult.mimeType ?? downloadResult.headers?.['Content-Type'] ?? downloadResult.headers?.['content-type'];
-      const realExt = this.getExtensionFromMimeType(contentType);
+      const sniffedExt = await this.detectExtensionFromContent(localPath);
+      const realExt = sniffedExt ?? this.getExtensionFromMimeType(contentType);
       if (realExt && realExt !== guessedExt) {
         const correctedPath = `${AUDIO_CACHE_DIR}${hash}.${realExt}`;
         try {

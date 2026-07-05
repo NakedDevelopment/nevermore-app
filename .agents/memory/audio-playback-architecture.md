@@ -56,3 +56,32 @@ un-warmed play of a track.
 **How to apply:** The corrupted-stream path is unaffected — `fallBackToCachedPlayback`
 re-arms its own loading state for the genuine reload. Keep the early clear gated by the
 `operationId === operationIdRef.current` check so a superseded load can't clobber a newer one.
+
+## Extension-less Appwrite URLs → non-finite duration (dead progress bar + seek)
+
+Appwrite Storage "view" URLs carry NO file extension. `audioCache.service.ts`
+caches downloads under a guessed extension (URL-based, default `.mp3`). If the
+real container isn't mp3 (m4a/wav/ogg/etc.), the file **plays and currentTime
+advances**, but the native decoder can't parse `player.duration`/seek metadata.
+Everything gated on a finite duration then dies together: total time `--:--`,
+progress bar stuck empty (`progress` pinned to 0), and `seekTo`/`seekForward`
+early-return (`!isFinite(player.duration)`), so the progress bar and ±10s
+buttons don't react. Symptoms look like three bugs; it's one root cause.
+
+**Why it looked like "only the first track is broken/fine":** the first play of
+a track streams the remote URL; cached (warmed) plays read the local file. The
+symptom appears on whichever path yields a mislabeled/unidentifiable container.
+
+**Fixes in place:**
+- `detectExtensionFromContent()` sniffs the downloaded file's first 16 bytes
+  (magic numbers) and is preferred over the HTTP Content-Type when naming the
+  cached file. Content-Type from Appwrite is often missing/generic, so byte
+  sniffing is the reliable signal. Bump `CACHE_INDEX_KEY` when changing
+  detection so old mislabeled entries are dropped and re-downloaded.
+- Provider `loadAndPlay` has a cached-local safety net: if a local cached file
+  plays but duration never resolves, it re-streams the remote source.
+
+**Why:** correct file extension is what lets the native decoder read duration —
+this is not derivable from the URL. **How to apply:** any new audio format must
+have a magic-byte signature added to `detectExtensionFromContent`, and any
+change to extension detection must bump the cache index key in lockstep.
