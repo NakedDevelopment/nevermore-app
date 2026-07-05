@@ -393,6 +393,17 @@ function useAudioChannel(
       await playResolvedSource(uri, playableUri, operationId);
       if (operationId !== operationIdRef.current) return;
 
+      // Playback has started and audio is audible at this point. Clear the
+      // loading state now so the play/pause button stops showing a spinner,
+      // even though we still verify streaming health below. Otherwise a
+      // cleanly-streaming remote track (e.g. a not-yet-warmed day) keeps the
+      // button stuck on the loading indicator for the entire verification
+      // window while the user already hears the audio playing. If the stream
+      // turns out to be corrupted, fallBackToCachedPlayback re-arms the
+      // loading state itself for the genuine reload.
+      setIsLoading(false);
+      setLoadingUri(null);
+
       if (isRemoteUri(uri) && playableUri === uri) {
         const started = await waitForPlaybackProgress(operationId);
         if (!started && operationId === operationIdRef.current) {

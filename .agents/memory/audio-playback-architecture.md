@@ -38,3 +38,21 @@ sibling stops immediately during the load window rather than after caching finis
 
 The playlist channel (reflection, via `useAudioPlaylist`) is the intentional exception: it
 auto-plays on selection. Single tracks never auto-play.
+
+## Convention: clear `isLoading` as soon as playback is audible
+
+In `loadAndPlay`, clear `setIsLoading(false)`/`setLoadingUri(null)` immediately after
+`playResolvedSource` starts playback — BEFORE the streaming-health verification
+(`waitForPlaybackProgress`, up to ~6s) that runs for remote streaming tracks
+(`isRemoteUri(uri) && playableUri === uri`).
+
+**Why:** `playResolvedSource` already sets `isPlaying(true)` and `currentUri`, so audio is
+audible the moment it returns. If `isLoading` stays true through the verification window, a
+cleanly-streaming remote track (e.g. a not-yet-warmed FortyDay day) leaves the play/pause
+button stuck on a spinner for several seconds while the user already hears the track. A cached
+track (`playableUri !== uri`) skips the wait, which is why the bug only shows on the first,
+un-warmed play of a track.
+
+**How to apply:** The corrupted-stream path is unaffected — `fallBackToCachedPlayback`
+re-arms its own loading state for the genuine reload. Keep the early clear gated by the
+`operationId === operationIdRef.current` check so a superseded load can't clobber a newer one.
