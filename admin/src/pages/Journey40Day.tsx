@@ -18,7 +18,6 @@ import {
   type ContentDocument,
 } from '../lib/content';
 import { showAppwriteError } from '../lib/notifications';
-import { getAudioDurationsSec } from '../lib/audioDuration';
 import {
   deleteTaskIcon,
   fetchTaskIcons,
@@ -138,8 +137,8 @@ export const Journey40Day = () => {
   const [isUploadPopupOpen, setIsUploadPopupOpen] = useState(false);
   const [uploadedAudioFiles, setUploadedAudioFiles] = useState<File[]>([]);
   const [uploadedAudioUrls, setUploadedAudioUrls] = useState<string[]>([]);
-  // Durations (seconds), index-aligned with the file/url arrays above.
-  const [uploadedAudioFileDurations, setUploadedAudioFileDurations] = useState<(number | null)[]>([]);
+  // Durations (seconds) for existing audio URLs, index-aligned with uploadedAudioUrls.
+  // Durations for newly uploaded files are recomputed server-side in updateContentWithFiles.
   const [uploadedAudioUrlDurations, setUploadedAudioUrlDurations] = useState<(number | null)[]>([]);
   const [isPublishing, setIsPublishing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -384,19 +383,6 @@ export const Journey40Day = () => {
 
     if (audioFiles.length > 0) {
       setUploadedAudioFiles((prev) => [...prev, ...audioFiles]);
-      // Placeholder nulls keep this array index-aligned with uploadedAudioFiles
-      // immediately; the real values backfill once decoding finishes.
-      setUploadedAudioFileDurations((prev) => [...prev, ...audioFiles.map(() => null)]);
-      const durationsStartIndex = uploadedAudioFiles.length;
-      getAudioDurationsSec(audioFiles).then((durations) => {
-        setUploadedAudioFileDurations((prev) => {
-          const next = [...prev];
-          durations.forEach((d, i) => {
-            next[durationsStartIndex + i] = d;
-          });
-          return next;
-        });
-      });
       // If content title is empty, suggest a title from the first file
       if (!contentTitle.trim() && audioFiles[0]) {
         const fileName = audioFiles[0].name;
@@ -516,7 +502,6 @@ export const Journey40Day = () => {
       setOriginalTasks([...validTasks]);
       // Clear newly uploaded files (keep URLs)
       setUploadedAudioFiles([]);
-      setUploadedAudioFileDurations([]);
 
       // Navigate back to content management after successful save
       navigate('/content-management');
@@ -771,11 +756,6 @@ export const Journey40Day = () => {
                                 const newFiles = [...prev];
                                 newFiles.splice(index, 1);
                                 return newFiles;
-                              });
-                              setUploadedAudioFileDurations((prev) => {
-                                const next = [...prev];
-                                next.splice(index, 1);
-                                return next;
                               });
                             }
                       }
