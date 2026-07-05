@@ -272,7 +272,7 @@ export const FortyDay = () => {
     });
   };
 
-  const handlePlayPause = async (audioUrl: string) => {
+  const handlePlayPause = async (audioUrl: string, durationSec?: number) => {
     if (audioPlayer.loadingUri === audioUrl) {
       return;
     }
@@ -282,7 +282,7 @@ export const FortyDay = () => {
       return;
     }
 
-    await audioPlayer.loadAndPlay(audioUrl);
+    await audioPlayer.loadAndPlay(audioUrl, durationSec);
   };
 
   const renderCarouselItem = ({ item }: { item: typeof days[0] }) => {
@@ -354,7 +354,7 @@ export const FortyDay = () => {
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.audioPlayBtn, !item.audioUrl && styles.mediaIconAreaDisabled]}
-                    onPress={() => isCurrentItem && item.audioUrl && handlePlayPause(item.audioUrl)}
+                    onPress={() => isCurrentItem && item.audioUrl && handlePlayPause(item.audioUrl, item.audioDurationSec)}
                     disabled={!item.audioUrl}
                   >
                     {isItemLoading ? (

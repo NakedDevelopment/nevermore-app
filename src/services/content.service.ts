@@ -26,6 +26,8 @@ export interface Content {
   recoveryImages?: string[];
   supportImages?: string[];
   files?: string[];
+  /** Durations (seconds) for `files`, set by the admin at upload time. Index-aligned with `files`. */
+  fileDurations?: number[];
   recoveryQuestionFiles?: string[];
   supportQuestionFiles?: string[];
   tasks?: string[];

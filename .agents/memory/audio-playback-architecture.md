@@ -39,49 +39,83 @@ sibling stops immediately during the load window rather than after caching finis
 The playlist channel (reflection, via `useAudioPlaylist`) is the intentional exception: it
 auto-plays on selection. Single tracks never auto-play.
 
-## Convention: clear `isLoading` as soon as playback is audible
+## Convention: clear `isLoading` as soon as playback starts — no post-play verification
 
-In `loadAndPlay`, clear `setIsLoading(false)`/`setLoadingUri(null)` immediately after
-`playResolvedSource` starts playback — BEFORE the streaming-health verification
-(`waitForPlaybackProgress`, up to ~6s) that runs for remote streaming tracks
-(`isRemoteUri(uri) && playableUri === uri`).
+In `loadAndPlay`, `setIsLoading(false)`/`setLoadingUri(null)` is cleared immediately after
+`playResolvedSource` returns (which already calls `player.play()` and sets `isPlaying(true)`).
+That's it — do NOT add a post-play "verify the stream is healthy, then pause/redownload/replace
+the source" step here.
 
-**Why:** `playResolvedSource` already sets `isPlaying(true)` and `currentUri`, so audio is
-audible the moment it returns. If `isLoading` stays true through the verification window, a
-cleanly-streaming remote track (e.g. a not-yet-warmed FortyDay day) leaves the play/pause
-button stuck on a spinner for several seconds while the user already hears the track. A cached
-track (`playableUri !== uri`) skips the wait, which is why the bug only shows on the first,
-un-warmed play of a track.
+**Why:** an earlier version of this file did exactly that (`waitForPlaybackProgress` +
+`fallBackToCachedPlayback`, gating "success" on `player.duration` resolving within ~6s). Many
+legitimately-fine tracks never resolve `duration` while streaming (the container's duration atom
+can sit at the end of the file), so the "verify" step routinely decided a healthy stream had
+failed, paused it, downloaded the entire file, and swapped the source out from under the user —
+producing audio that plays, silently stalls for the length of a full download, then resumes.
+Users experienced this as playback "not starting," ±10s/stop controls going unresponsive during
+the stall window, and the progress bar disappearing. Reverted in July 2026 (see git history
+around commits `c144036`..`0ad0285` on `codex-fix-subscription-40-day-regressions` for the
+removed code, if you need the archaeology). Missing duration is now treated as a purely cosmetic
+condition (see below), never a reason to interrupt playback that's already underway.
 
-**How to apply:** The corrupted-stream path is unaffected — `fallBackToCachedPlayback`
-re-arms its own loading state for the genuine reload. Keep the early clear gated by the
-`operationId === operationIdRef.current` check so a superseded load can't clobber a newer one.
-
-## Extension-less Appwrite URLs → non-finite duration (dead progress bar + seek)
+## Extension-less Appwrite URLs → non-finite duration (dead progress bar, but NOT dead seek)
 
 Appwrite Storage "view" URLs carry NO file extension. `audioCache.service.ts`
 caches downloads under a guessed extension (URL-based, default `.mp3`). If the
 real container isn't mp3 (m4a/wav/ogg/etc.), the file **plays and currentTime
 advances**, but the native decoder can't parse `player.duration`/seek metadata.
-Everything gated on a finite duration then dies together: total time `--:--`,
-progress bar stuck empty (`progress` pinned to 0), and `seekTo`/`seekForward`
-early-return (`!isFinite(player.duration)`), so the progress bar and ±10s
-buttons don't react. Symptoms look like three bugs; it's one root cause.
+Total time shows `--:--` and the progress bar fill stays at 0 — that part is an
+accepted cosmetic gap, not something to chase with re-downloads or re-streams.
 
-**Why it looked like "only the first track is broken/fine":** the first play of
-a track streams the remote URL; cached (warmed) plays read the local file. The
-symptom appears on whichever path yields a mislabeled/unidentifiable container.
+**Fix in place (cosmetic only, safe):** `detectExtensionFromContent()` sniffs the
+downloaded file's first 16 bytes (magic numbers) and is preferred over the HTTP
+Content-Type when naming the cached file, so a warmed/cached play is more likely
+to get a correct extension and therefore working duration. Bump `CACHE_INDEX_KEY`
+when changing detection so old mislabeled entries are dropped and re-downloaded.
+This only affects what extension a *newly downloaded* file is saved under — it
+never interrupts or replaces an in-progress playback.
 
-**Fixes in place:**
-- `detectExtensionFromContent()` sniffs the downloaded file's first 16 bytes
-  (magic numbers) and is preferred over the HTTP Content-Type when naming the
-  cached file. Content-Type from Appwrite is often missing/generic, so byte
-  sniffing is the reliable signal. Bump `CACHE_INDEX_KEY` when changing
-  detection so old mislabeled entries are dropped and re-downloaded.
-- Provider `loadAndPlay` has a cached-local safety net: if a local cached file
-  plays but duration never resolves, it re-streams the remote source.
+**`seekForward`/`seekBackward` must not require known duration.** `seekBackward`
+never did. `seekForward` clamps to the effective duration (see below) only when
+it's known; otherwise it just adds the seconds to `currentTime` unclamped. Do not
+reintroduce an early-return on `!isFinite(player.duration)` here — that's what
+made ±10s controls go unresponsive on tracks whose duration never resolves.
 
-**Why:** correct file extension is what lets the native decoder read duration —
-this is not derivable from the URL. **How to apply:** any new audio format must
-have a magic-byte signature added to `detectExtensionFromContent`, and any
-change to extension detection must bump the cache index key in lockstep.
+## Known-duration fallback (`knownDurationSec`)
+
+Rather than only chasing the cosmetic gap above, `loadAudio`/`loadAndPlay` accept
+an optional `knownDurationSec` — a duration computed once, ahead of time, by the
+admin at upload time (browser-decoded via `HTMLAudioElement`, see
+`admin/src/lib/audioDuration.ts`) and stored on the content record. Each channel
+keeps it in `knownDurationRef` and a `getEffectiveDuration()` helper resolves to
+`player.duration` when the native player has it, falling back to
+`knownDurationRef.current` otherwise. Every place that used to gate on
+`isFinite(player.duration)` (total/remaining time, progress, `seekForward`,
+`seekTo`, `getPlaybackSnapshot`) goes through `getEffectiveDuration()` instead.
+
+**Why:** this makes duration/seek/progress work correctly even when the native
+player *never* resolves its own duration (common for streamed, extension-less
+Appwrite audio) — no re-download, no re-stream, no waiting. It's strictly
+additive: if `knownDurationSec` is omitted, behavior is unchanged.
+
+**Schema (Appwrite `content` collection):** `fileDurations` (Float array, index-
+aligned with `files`), `mainContentRecoveryDurationSec` (Float),
+`mainContentSupportDurationSec` (Float) — all optional. Added July 2026.
+`recoveryQuestionFileDurations`/`supportQuestionFileDurations` (Float arrays,
+aligned with the corresponding question-file URL arrays) are the natural next
+attributes once reflection-question audio is wired the same way.
+
+**How to apply:** as of July 2026 only the 40-Day journey day audio
+(`DayData.audioDurationSec`, from `content.fileDurations[0]`) is wired through to
+`loadAndPlay` in `FortyDay.tsx`. TemptationDetails' main content
+(`mainContentRecoveryURL`/`mainContentSupportURL`) and reflection question audio
+are NOT wired yet — `useContentPresentation`/`useAudioPlaylist`/`Transcript.tsx`
+still call `loadAudio`/`loadAndPlay` without a duration. When extending: thread
+`content.mainContentRecoveryDurationSec`/`mainContentSupportDurationSec` through
+`useContentPresentation`, and a `recoveryQuestionFileDurations`/
+`supportQuestionFileDurations`-backed array through `useAudioPlaylist.loadPlaylist`
+so `handleAudioSelect` can pass `durations[index]` to `loadAndPlay`. Follow the
+same admin-side pattern as `Journey40Day.tsx`: compute duration client-side at
+upload with `getAudioDurationsSec`, keep it index-aligned with its URL array
+across add/remove, and merge with existing durations on edit exactly like the
+existing-URL merge already does.

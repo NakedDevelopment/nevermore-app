@@ -29,8 +29,15 @@ export interface AudioChannel {
   seekTo: (progress: number) => Promise<void>;
   rewind: () => Promise<void>;
   forward: () => Promise<void>;
-  loadAudio: (uri: string) => Promise<void>;
-  loadAndPlay: (uri: string) => Promise<void>;
+  /**
+   * `knownDurationSec` is a duration computed ahead of time (e.g. by the admin
+   * at upload time) and stored on the content record. When provided, it backs
+   * total time/progress/seek immediately and as a fallback if the native
+   * player never resolves its own `duration` while streaming — see
+   * .agents/memory/audio-playback-architecture.md.
+   */
+  loadAudio: (uri: string, knownDurationSec?: number) => Promise<void>;
+  loadAndPlay: (uri: string, knownDurationSec?: number) => Promise<void>;
   unloadAudio: () => Promise<void>;
   getPlaybackSnapshot: () => PlaybackSnapshot;
 }
@@ -78,6 +85,9 @@ const isPlayerAtEnd = (player: AudioPlayer): boolean => {
 
 const isRemoteUri = (uri: string): boolean => /^https?:\/\//i.test(uri);
 
+const normalizeKnownDuration = (value?: number): number | null =>
+  typeof value === 'number' && isFinite(value) && value > 0 ? value : null;
+
 const configureBackgroundAudioSession = async () => {
   await setAudioModeAsync({
     playsInSilentMode: true,
@@ -111,6 +121,15 @@ function useAudioChannel(
   const previousVolumeRef = useRef<number>(1.0);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const operationIdRef = useRef(0);
+  // A duration computed ahead of time and stored on the content record (see
+  // `knownDurationSec` on loadAudio/loadAndPlay). Used whenever the native
+  // player hasn't (or never does) resolve its own `duration` from the stream.
+  const knownDurationRef = useRef<number | null>(null);
+
+  const getEffectiveDuration = (): number | null => {
+    if (isFinite(player.duration) && player.duration > 0) return player.duration;
+    return knownDurationRef.current;
+  };
 
   const syncDurationWhenAvailable = async (operationId: number, maxAttempts = 30) => {
     let attempts = 0;
@@ -121,62 +140,17 @@ function useAudioChannel(
     }
     if (operationId !== operationIdRef.current) return;
 
-    const durationMs = player.duration * 1000;
-    const durationKnown = isFinite(player.duration) && player.duration > 0;
-    setTotalTime(durationKnown ? formatTime(durationMs) : '--:--');
-    setRemainingTime(durationKnown ? formatTime(Math.max(0, durationMs - player.currentTime * 1000)) : '--:--');
-    setProgress(durationKnown ? player.currentTime / player.duration : 0);
-  };
-
-  const isStreamingCleanly = (): boolean => {
-    // Advancing currentTime alone isn't enough: a container the native
-    // decoder can't identify from an extensionless streaming URL (common for
-    // non-mp3 Support-role tracks) can still report a moving currentTime
-    // while duration/seek metadata stays corrupted, leaving the progress bar
-    // and 10s buttons dead. Require duration too, so that case is treated as
-    // a failed stream and falls back to the cached, correctly-extensioned file.
-    return (
-      player.playing &&
-      player.currentTime > 0.05 &&
-      isFinite(player.duration) &&
-      player.duration > 0
-    );
-  };
-
-  const waitForPlaybackProgress = async (
-    operationId: number,
-    // Wide enough that a legitimately-streaming file whose duration metadata
-    // just resolves slowly over a throttled connection isn't misdiagnosed as
-    // the corrupted-metadata case and forced through a full re-download.
-    maxAttempts = 30,
-    intervalMs = 200
-  ): Promise<boolean> => {
-    let attempts = 0;
-    while (attempts < maxAttempts) {
-      if (operationId !== operationIdRef.current) return false;
-      try {
-        if (isStreamingCleanly()) {
-          return true;
-        }
-      } catch {
-        return false;
-      }
-      await new Promise(resolve => setTimeout(resolve, intervalMs));
-      attempts++;
-    }
-
-    try {
-      return isStreamingCleanly();
-    } catch {
-      return false;
-    }
+    const effectiveDuration = getEffectiveDuration();
+    const durationKnown = effectiveDuration != null;
+    setTotalTime(durationKnown ? formatTime(effectiveDuration * 1000) : '--:--');
+    setRemainingTime(durationKnown ? formatTime(Math.max(0, effectiveDuration * 1000 - player.currentTime * 1000)) : '--:--');
+    setProgress(durationKnown ? player.currentTime / effectiveDuration : 0);
   };
 
   const playResolvedSource = async (
     uri: string,
     resolvedUri: string,
-    operationId: number,
-    resumeFromSec?: number
+    operationId: number
   ): Promise<void> => {
     const audioSource: AudioSource = { uri: resolvedUri };
     await player.replace(audioSource);
@@ -185,74 +159,18 @@ function useAudioChannel(
     setIsMuted(false);
     previousVolumeRef.current = 1.0;
     player.volume = 1.0;
+    setCurrentTime('00:00');
 
-    const shouldResume = typeof resumeFromSec === 'number' && isFinite(resumeFromSec) && resumeFromSec > 0.05;
-    if (shouldResume) {
-      try {
-        // Land the cached file at the same spot the stream had already
-        // reached, so falling back mid-playback doesn't read as a restart.
-        await player.seekTo(resumeFromSec);
-      } catch {
-        // Some platforms can't seek before the newly-loaded source is
-        // ready — fall through and just play from 0 rather than failing.
-      }
-      if (operationId !== operationIdRef.current) return;
-      setCurrentTime(formatTime(resumeFromSec * 1000));
-    } else {
-      setCurrentTime('00:00');
-    }
-    const durationKnown = isFinite(player.duration) && player.duration > 0;
-    const startPositionSec = shouldResume && typeof resumeFromSec === 'number' ? resumeFromSec : 0;
-    setTotalTime(durationKnown ? formatTime(player.duration * 1000) : '--:--');
-    setRemainingTime(durationKnown ? formatTime(Math.max(0, (player.duration - startPositionSec) * 1000)) : '--:--');
-    setProgress(durationKnown && shouldResume ? resumeFromSec / player.duration : 0);
+    const effectiveDuration = getEffectiveDuration();
+    setTotalTime(effectiveDuration != null ? formatTime(effectiveDuration * 1000) : '--:--');
+    setRemainingTime(effectiveDuration != null ? formatTime(effectiveDuration * 1000) : '--:--');
+    setProgress(0);
     setCurrentUri(uri);
 
     await setIsAudioActiveAsync(true);
     await player.play();
     setIsPlaying(true);
     void syncDurationWhenAvailable(operationId);
-  };
-
-  const fallBackToCachedPlayback = async (uri: string, operationId: number): Promise<void> => {
-    try {
-      if (operationId !== operationIdRef.current) return;
-
-      // Capture how far the stream had already gotten before we tear it
-      // down — a corrupted-metadata track that never got past currentTime
-      // 0 still resumes at 0 (no behavior change), but a track that was
-      // already audibly playing resumes where the user heard it, instead
-      // of restarting from the top once the cached copy takes over.
-      let resumeFromSec = 0;
-      try {
-        resumeFromSec = isFinite(player.currentTime) ? player.currentTime : 0;
-      } catch {
-        resumeFromSec = 0;
-      }
-
-      setIsLoading(true);
-      setLoadingUri(uri);
-      player.pause();
-
-      const cachedUri = await audioCacheService.getAudioUri(uri);
-      if (operationId !== operationIdRef.current) return;
-
-      await playResolvedSource(uri, cachedUri, operationId, resumeFromSec);
-    } catch (error) {
-      if (operationId !== operationIdRef.current) return;
-      console.error('Error falling back to cached audio:', error);
-      setCurrentUri(null);
-      setIsPlaying(false);
-      setCurrentTime('00:00');
-      setTotalTime('--:--');
-      setRemainingTime('--:--');
-      setProgress(0);
-    } finally {
-      if (operationId === operationIdRef.current) {
-        setIsLoading(false);
-        setLoadingUri(null);
-      }
-    }
   };
 
   // Sync player state with React state
@@ -266,12 +184,13 @@ function useAudioChannel(
         try {
           setIsPlaying(player.playing);
           const currentTimeMs = player.currentTime * 1000;
-          const durationMs = player.duration * 1000;
-          const durationValid = isFinite(player.duration) && player.duration > 0;
+          const effectiveDuration = getEffectiveDuration();
+          const durationValid = effectiveDuration != null;
+          const durationMs = durationValid ? effectiveDuration * 1000 : 0;
           setCurrentTime(formatTime(currentTimeMs));
           setTotalTime(durationValid ? formatTime(durationMs) : '--:--');
           setRemainingTime(durationValid ? formatTime(Math.max(0, durationMs - currentTimeMs)) : '--:--');
-          setProgress(durationValid ? player.currentTime / player.duration : 0);
+          setProgress(durationValid ? player.currentTime / effectiveDuration : 0);
           if (isPlayerAtEnd(player) && !player.playing) {
             setIsPlaying(false);
             setProgress(1);
@@ -299,7 +218,7 @@ function useAudioChannel(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUri]);
 
-  const loadAudio = async (uri: string) => {
+  const loadAudio = async (uri: string, knownDurationSec?: number) => {
     let operationId: number | null = null;
     try {
       if (!uri || uri.trim() === '') {
@@ -311,6 +230,7 @@ function useAudioChannel(
         return;
       }
 
+      knownDurationRef.current = normalizeKnownDuration(knownDurationSec);
       operationId = ++operationIdRef.current;
       setIsLoading(true);
       setLoadingUri(uri);
@@ -331,9 +251,9 @@ function useAudioChannel(
       player.volume = 1.0;
 
       setCurrentTime('00:00');
-      const durationKnown = isFinite(player.duration) && player.duration > 0;
-      setTotalTime(durationKnown ? formatTime(player.duration * 1000) : '--:--');
-      setRemainingTime(durationKnown ? formatTime(player.duration * 1000) : '--:--');
+      const effectiveDuration = getEffectiveDuration();
+      setTotalTime(effectiveDuration != null ? formatTime(effectiveDuration * 1000) : '--:--');
+      setRemainingTime(effectiveDuration != null ? formatTime(effectiveDuration * 1000) : '--:--');
       setProgress(0);
 
       setCurrentUri(uri);
@@ -355,13 +275,14 @@ function useAudioChannel(
     }
   };
 
-  const loadAndPlay = async (uri: string) => {
+  const loadAndPlay = async (uri: string, knownDurationSec?: number) => {
     const operationId = ++operationIdRef.current;
     try {
       if (!uri || uri.trim() === '') {
         return;
       }
 
+      knownDurationRef.current = normalizeKnownDuration(knownDurationSec);
       setIsLoading(true);
       setLoadingUri(uri);
       onPlayStart();
@@ -393,53 +314,18 @@ function useAudioChannel(
       await playResolvedSource(uri, playableUri, operationId);
       if (operationId !== operationIdRef.current) return;
 
-      // Playback has started and audio is audible at this point. Clear the
-      // loading state now so the play/pause button stops showing a spinner,
-      // even though we still verify streaming health below. Otherwise a
-      // cleanly-streaming remote track (e.g. a not-yet-warmed day) keeps the
-      // button stuck on the loading indicator for the entire verification
-      // window while the user already hears the audio playing. If the stream
-      // turns out to be corrupted, fallBackToCachedPlayback re-arms the
-      // loading state itself for the genuine reload.
       setIsLoading(false);
       setLoadingUri(null);
 
+      // Playing a not-yet-cached remote track directly: warm the cache in the
+      // background (this is also what gives the file its correct extension
+      // via magic-byte sniffing, so a future play gets working duration/seek
+      // metadata) without blocking or interrupting the playback that already
+      // started.
       if (isRemoteUri(uri) && playableUri === uri) {
-        const started = await waitForPlaybackProgress(operationId);
-        if (!started && operationId === operationIdRef.current) {
-          await fallBackToCachedPlayback(uri, operationId);
-          return;
-        }
-
         audioCacheService.warmAudio(uri).catch((error) => {
           console.warn('Failed to warm streamed audio cache:', error);
         });
-      } else if (isRemoteUri(uri) && playableUri !== uri) {
-        // Playing a cached local copy of a remote track. Appwrite Storage URLs
-        // carry no file extension, so a non-mp3 track can get cached under the
-        // wrong extension: it plays and tracks elapsed time fine, but the
-        // native decoder can't parse its duration/seek metadata, leaving the
-        // countdown stuck at '--:--'. Because this is a local file the
-        // streaming-health check above is skipped, so verify duration here and,
-        // if it never resolves, recover by streaming the remote source (which
-        // identifies the container from the live response), resuming from where
-        // local playback had already reached.
-        const durationResolved = await waitForPlaybackProgress(operationId);
-        if (!durationResolved && operationId === operationIdRef.current) {
-          let resumeFromSec = 0;
-          try {
-            resumeFromSec = isFinite(player.currentTime) ? player.currentTime : 0;
-          } catch {
-            resumeFromSec = 0;
-          }
-
-          setIsLoading(true);
-          setLoadingUri(uri);
-          await playResolvedSource(uri, uri, operationId, resumeFromSec);
-          if (operationId !== operationIdRef.current) return;
-          setIsLoading(false);
-          setLoadingUri(null);
-        }
       }
     } catch (error) {
       if (operationId !== operationIdRef.current) return;
@@ -460,6 +346,7 @@ function useAudioChannel(
 
   const unloadAudio = async () => {
     operationIdRef.current++;
+    knownDurationRef.current = null;
     try {
       if (player.playing) {
         player.pause();
@@ -578,14 +465,14 @@ function useAudioChannel(
 
   const seekForward = async (seconds: number) => {
     try {
-      if (!currentUri || !isFinite(player.duration) || player.duration <= 0) {
+      if (!currentUri) {
         return;
       }
 
-      const newPosition = Math.min(
-        player.currentTime + seconds,
-        player.duration
-      );
+      const effectiveDuration = getEffectiveDuration();
+      const newPosition = effectiveDuration != null
+        ? Math.min(player.currentTime + seconds, effectiveDuration)
+        : player.currentTime + seconds;
       await player.seekTo(newPosition);
     } catch (error) {
     }
@@ -605,12 +492,13 @@ function useAudioChannel(
 
   const seekTo = async (progressValue: number) => {
     try {
-      if (!currentUri || !isFinite(player.duration) || player.duration <= 0) {
+      const effectiveDuration = getEffectiveDuration();
+      if (!currentUri || effectiveDuration == null) {
         return;
       }
 
       const clampedProgress = Math.max(0, Math.min(1, progressValue));
-      const newPosition = clampedProgress * player.duration;
+      const newPosition = clampedProgress * effectiveDuration;
       await player.seekTo(newPosition);
     } catch (error) {
     }
@@ -659,16 +547,17 @@ function useAudioChannel(
 
   const getPlaybackSnapshot = useCallback((): PlaybackSnapshot => {
     try {
-      const dur = player.duration;
       const pos = player.currentTime;
+      const effectiveDuration = getEffectiveDuration();
       return {
         positionSec: isFinite(pos) && pos >= 0 ? pos : 0,
-        durationSec: isFinite(dur) && dur > 0 ? dur : 0,
+        durationSec: effectiveDuration ?? 0,
         isPlaying: player.playing,
       };
     } catch {
       return { positionSec: 0, durationSec: 0, isPlaying: false };
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [player]);
 
   return {

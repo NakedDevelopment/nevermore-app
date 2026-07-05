@@ -29,6 +29,8 @@ export interface DayData {
   completionPercentage: number;
   tasks: Task[];
   audioUrl?: string;
+  /** Known duration (seconds) for audioUrl, set by the admin at upload time. */
+  audioDurationSec?: number;
   /** True when this day is free (admin-set). Only Day 1–3 can be free. */
   isFree?: boolean;
 }
@@ -278,6 +280,7 @@ export const useFortyDayStore = create<FortyDayState>()(
             
             // Convert Appwrite file ID to proper storage URL
             const audioUrl = getFirstFileUrl(content.files);
+            const audioDurationSec = content.fileDurations?.[0];
             // Only Day 1–3 can be free; respect content.isFree when set
             const isFree =
               dayNumber <= FREE_JOURNEY_DAYS_MAX && content.isFree === true;
@@ -288,6 +291,7 @@ export const useFortyDayStore = create<FortyDayState>()(
               completionPercentage,
               tasks,
               audioUrl,
+              audioDurationSec,
               isFree,
             };
           });
