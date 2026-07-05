@@ -6,6 +6,7 @@ import {
   formatFileSize,
   getConfiguredMaxUploadBytes,
 } from './uploadLimits';
+import { getAudioDurationsSec } from './audioDuration';
 
 const DATABASE_ID = import.meta.env.VITE_APPWRITE_DATABASE_ID || '';
 const CONTENT_COLLECTION_ID = import.meta.env.VITE_APPWRITE_CONTENT_COLLECTION_ID || 'content';
@@ -30,6 +31,12 @@ export interface ContentData {
   transcriptSupportText?: string; // In-app Support transcript (plain text)
   recoveryImages?: string[]; // Array of URLs for Recovery images
   supportImages?: string[]; // Array of URLs for Support images
+  // Durations (seconds), index-aligned with the corresponding URL array/field
+  // above. Read at upload time (browser-decoded) so the app has a known-good
+  // duration and never has to depend on resolving it from the stream.
+  fileDurations?: (number | null)[]; // Aligned with `files`
+  mainContentRecoveryDurationSec?: number | null;
+  mainContentSupportDurationSec?: number | null;
 }
 
 export interface UploadedFile {
@@ -194,6 +201,10 @@ export async function createContent(contentData: ContentData): Promise<string> {
       documentData.files = contentData.files;
     }
 
+    if (contentData.fileDurations && contentData.fileDurations.length > 0) {
+      documentData.fileDurations = contentData.fileDurations;
+    }
+
     if (contentData.tasks && contentData.tasks.length > 0) {
       documentData.tasks = contentData.tasks;
     }
@@ -217,6 +228,14 @@ export async function createContent(contentData: ContentData): Promise<string> {
 
     if (contentData.mainContentSupportURL) {
       documentData.mainContentSupportURL = contentData.mainContentSupportURL;
+    }
+
+    if (contentData.mainContentRecoveryDurationSec != null) {
+      documentData.mainContentRecoveryDurationSec = contentData.mainContentRecoveryDurationSec;
+    }
+
+    if (contentData.mainContentSupportDurationSec != null) {
+      documentData.mainContentSupportDurationSec = contentData.mainContentSupportDurationSec;
     }
 
     if (contentData.transcriptRecoveryText !== undefined) {
@@ -322,6 +341,7 @@ export async function publishContent(
     // Variables for URLs
     let imageUrls: string[] = [];
     let audioUrls: string[] = [];
+    let audioDurations: (number | null)[] = [];
     let transcriptUrl: string | undefined;
     let transcriptUrls: string[] = [];
     let mainContentRecoveryURL: string | undefined;
@@ -404,8 +424,12 @@ export async function publishContent(
       // Upload audio files
       if (audioFiles.length > 0) {
         onProgress?.(Math.round((currentStep / totalSteps) * 100));
-        const uploadedAudio = await uploadFiles(audioFiles);
+        const [uploadedAudio, durations] = await Promise.all([
+          uploadFiles(audioFiles),
+          getAudioDurationsSec(audioFiles),
+        ]);
         audioUrls = uploadedAudio.map((file) => file.url);
+        audioDurations = durations;
         currentStep++;
         onProgress?.(Math.round((currentStep / totalSteps) * 100));
       }
@@ -435,6 +459,7 @@ export async function publishContent(
       ...contentData,
       images: imageUrls.length > 0 ? imageUrls : undefined,
       files: audioUrls.length > 0 ? audioUrls : undefined, // Store question audio files in 'files' array
+      fileDurations: audioDurations.length > 0 ? audioDurations : undefined,
       transcript: transcriptUrl,
       transcripts: transcriptUrls.length > 0 ? transcriptUrls : undefined,
       tasks: tasks && tasks.length > 0 ? tasks : undefined,
@@ -468,6 +493,7 @@ export interface ContentDocument {
   type: string; // Enum: forty_day_journey, forty_temptations
   images?: string[];
   files?: string[]; // Legacy combined question audio URLs
+  fileDurations?: (number | null)[]; // Aligned with `files`
   recoveryQuestionFiles?: string[];
   supportQuestionFiles?: string[];
   transcript?: string; // Single URL (deprecated, use transcripts)
@@ -539,6 +565,12 @@ export async function updateContent(
       documentData.files = []; // Clear files if empty
     }
 
+    if (contentData.fileDurations && contentData.fileDurations.length > 0) {
+      documentData.fileDurations = contentData.fileDurations;
+    } else {
+      documentData.fileDurations = []; // Clear durations if empty
+    }
+
     if (contentData.tasks && contentData.tasks.length > 0) {
       documentData.tasks = contentData.tasks;
     }
@@ -559,6 +591,9 @@ export async function updateContent(
     } else {
       documentData.mainContentSupportURL = null;
     }
+
+    documentData.mainContentRecoveryDurationSec = contentData.mainContentRecoveryDurationSec ?? null;
+    documentData.mainContentSupportDurationSec = contentData.mainContentSupportDurationSec ?? null;
 
     if (contentData.transcriptRecoveryText !== undefined) {
       const t =
@@ -630,7 +665,8 @@ export async function updateContentWithFiles(
   onProgress?: (progress: number) => void,
   _existingImageUrls?: string[],
   existingAudioUrls?: string[],
-  existingTranscriptUrl?: string | null
+  existingTranscriptUrl?: string | null,
+  existingAudioDurations?: (number | null)[]
 ): Promise<string> {
   try { 
     const totalSteps = 
@@ -653,16 +689,22 @@ export async function updateContentWithFiles(
 
     // Upload new audio files
     let newAudioUrls: string[] = [];
+    let newAudioDurations: (number | null)[] = [];
     if (audioFiles.length > 0) {
       onProgress?.(Math.round((currentStep / totalSteps) * 100));
-      const uploadedAudio = await uploadFiles(audioFiles);
+      const [uploadedAudio, durations] = await Promise.all([
+        uploadFiles(audioFiles),
+        getAudioDurationsSec(audioFiles),
+      ]);
       newAudioUrls = uploadedAudio.map((file) => file.url);
+      newAudioDurations = durations;
       currentStep++;
       onProgress?.(Math.round((currentStep / totalSteps) * 100));
     }
 
     // Combine existing audio URLs with new ones
     const allAudioUrls = [...(existingAudioUrls || []), ...newAudioUrls];
+    const allAudioDurations = [...(existingAudioDurations || []), ...newAudioDurations];
 
     // Upload new transcript
     let newTranscriptUrl: string | undefined;
@@ -683,6 +725,7 @@ export async function updateContentWithFiles(
       ...contentData,
       images: _newImageUrls.length > 0 ? _newImageUrls : undefined,
       files: allAudioUrls.length > 0 ? allAudioUrls : undefined, // Store audio files in 'files' array
+      fileDurations: allAudioDurations.length > 0 ? allAudioDurations : undefined,
       transcript: finalTranscriptUrl,
       tasks: tasks && tasks.length > 0 ? tasks : undefined,
     });

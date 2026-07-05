@@ -8,8 +8,9 @@ import type { Column } from '../components/DataTable';
 import { Pagination } from '../components/Pagination';
 import { Button } from '../components/Button';
 import { fetchContent, type ContentDocument } from '../lib/content';
+import { backfillAudioDurations, type BackfillProgress } from '../lib/backfillDurations';
 import { getCategoryName, type Category } from '../lib/categories';
-import { showAppwriteError } from '../lib/notifications';
+import { showAppwriteError, showSuccess } from '../lib/notifications';
 import { useCategoriesStore } from '../store/categoriesStore';
 
 interface ContentItem extends Record<string, unknown> {
@@ -80,6 +81,8 @@ export const ContentManagement = () => {
   const [totalItems, setTotalItems] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isBackfillingDurations, setIsBackfillingDurations] = useState(false);
+  const [backfillProgress, setBackfillProgress] = useState<BackfillProgress | null>(null);
 
   // Fetch categories on mount (only once, centrally managed)
   useEffect(() => {
@@ -225,6 +228,31 @@ export const ContentManagement = () => {
     setCurrentPage(1);
   };
 
+  const handleBackfillDurations = async () => {
+    if (isBackfillingDurations) return;
+
+    setIsBackfillingDurations(true);
+    setBackfillProgress({ processed: 0, total: 0, updated: 0 });
+
+    try {
+      const result = await backfillAudioDurations((progress) => {
+        setBackfillProgress(progress);
+      });
+      showSuccess(
+        `Backfilled durations for ${result.updated} of ${result.scanned} content item(s)` +
+          (result.failed > 0 ? ` (${result.failed} failed)` : '')
+      );
+      // Existing audio doesn't need to be re-uploaded — durations were read
+      // straight from the already-stored files.
+    } catch (error) {
+      console.error('Error backfilling audio durations:', error);
+      showAppwriteError(error);
+    } finally {
+      setIsBackfillingDurations(false);
+      setBackfillProgress(null);
+    }
+  };
+
   const handleRowClick = (row: ContentItem) => {
     // Navigate based on the item type and pass data via state
     if (row.type === '40 Day Journey') {
@@ -285,6 +313,19 @@ export const ContentManagement = () => {
             placeholder="Type"
           />
         </div>
+
+        {/* Backfill Audio Durations Button */}
+        <Button
+          className="w-full sm:w-[220px] sm:shrink-0"
+          onClick={handleBackfillDurations}
+          disabled={isBackfillingDurations}
+        >
+          {isBackfillingDurations
+            ? backfillProgress && backfillProgress.total > 0
+              ? `Backfilling ${backfillProgress.processed}/${backfillProgress.total}…`
+              : 'Backfilling…'
+            : 'Backfill Audio Durations'}
+        </Button>
 
         {/* Upload Button */}
         <Button className="w-full sm:w-[208px] sm:shrink-0 text-white bg-[#965cdf]" variant="primary" onClick={() => setIsUploadModalOpen(true)}>

@@ -18,6 +18,7 @@ import {
   type ContentDocument,
 } from '../lib/content';
 import { showAppwriteError } from '../lib/notifications';
+import { getAudioDurationsSec } from '../lib/audioDuration';
 import {
   deleteTaskIcon,
   fetchTaskIcons,
@@ -137,6 +138,9 @@ export const Journey40Day = () => {
   const [isUploadPopupOpen, setIsUploadPopupOpen] = useState(false);
   const [uploadedAudioFiles, setUploadedAudioFiles] = useState<File[]>([]);
   const [uploadedAudioUrls, setUploadedAudioUrls] = useState<string[]>([]);
+  // Durations (seconds), index-aligned with the file/url arrays above.
+  const [uploadedAudioFileDurations, setUploadedAudioFileDurations] = useState<(number | null)[]>([]);
+  const [uploadedAudioUrlDurations, setUploadedAudioUrlDurations] = useState<(number | null)[]>([]);
   const [isPublishing, setIsPublishing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [publishProgress, setPublishProgress] = useState(0);
@@ -263,6 +267,7 @@ export const Journey40Day = () => {
             // Load audio files from URLs
             if (contentDoc.files && contentDoc.files.length > 0) {
               setUploadedAudioUrls(contentDoc.files);
+              setUploadedAudioUrlDurations(contentDoc.fileDurations || []);
             }
             // If we navigated directly to an edit route without state, hydrate fields from the document
             if (!journeyData) {
@@ -376,9 +381,22 @@ export const Journey40Day = () => {
     const audioFiles = uploadFiles
       .filter((uf) => uf.contentType === 'audio')
       .map((uf) => uf.file);
-    
+
     if (audioFiles.length > 0) {
       setUploadedAudioFiles((prev) => [...prev, ...audioFiles]);
+      // Placeholder nulls keep this array index-aligned with uploadedAudioFiles
+      // immediately; the real values backfill once decoding finishes.
+      setUploadedAudioFileDurations((prev) => [...prev, ...audioFiles.map(() => null)]);
+      const durationsStartIndex = uploadedAudioFiles.length;
+      getAudioDurationsSec(audioFiles).then((durations) => {
+        setUploadedAudioFileDurations((prev) => {
+          const next = [...prev];
+          durations.forEach((d, i) => {
+            next[durationsStartIndex + i] = d;
+          });
+          return next;
+        });
+      });
       // If content title is empty, suggest a title from the first file
       if (!contentTitle.trim() && audioFiles[0]) {
         const fileName = audioFiles[0].name;
@@ -386,7 +404,7 @@ export const Journey40Day = () => {
         setContentTitle(nameWithoutExt);
       }
     }
-    
+
     // Close the upload popup after handling files
     setIsUploadPopupOpen(false);
   };
@@ -473,19 +491,22 @@ export const Journey40Day = () => {
         },
         [], // No existing image URLs
         uploadedAudioUrls, // Pass existing audio URLs
-        null // No transcript URL
+        null, // No transcript URL
+        uploadedAudioUrlDurations // Pass existing audio durations
       );
 
       // Reload content to get updated URLs
       const updatedContent = await fetchContentById(contentId);
       if (updatedContent) {
         setOriginalContentData(updatedContent);
-        
+
         // Reload audio URLs
         if (updatedContent.files && updatedContent.files.length > 0) {
           setUploadedAudioUrls(updatedContent.files);
+          setUploadedAudioUrlDurations(updatedContent.fileDurations || []);
         } else {
           setUploadedAudioUrls([]);
+          setUploadedAudioUrlDurations([]);
         }
       }
 
@@ -495,7 +516,8 @@ export const Journey40Day = () => {
       setOriginalTasks([...validTasks]);
       // Clear newly uploaded files (keep URLs)
       setUploadedAudioFiles([]);
-      
+      setUploadedAudioFileDurations([]);
+
       // Navigate back to content management after successful save
       navigate('/content-management');
     } catch (error) {
@@ -750,6 +772,11 @@ export const Journey40Day = () => {
                                 newFiles.splice(index, 1);
                                 return newFiles;
                               });
+                              setUploadedAudioFileDurations((prev) => {
+                                const next = [...prev];
+                                next.splice(index, 1);
+                                return next;
+                              });
                             }
                       }
                       className="w-full"
@@ -769,6 +796,7 @@ export const Journey40Day = () => {
                           ? undefined
                           : () => {
                               setUploadedAudioUrls((prev) => prev.filter((_, i) => i !== index));
+                              setUploadedAudioUrlDurations((prev) => prev.filter((_, i) => i !== index));
                             }
                       }
                       className="w-full"
