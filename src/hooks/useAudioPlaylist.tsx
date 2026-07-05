@@ -5,7 +5,7 @@ interface UseAudioPlaylistReturn {
   selectedAudioIndex: number;
   audioPlayer: AudioChannel;
   handleAudioSelect: (index: number) => Promise<void>;
-  loadPlaylist: (audioUrls: string[]) => void;
+  loadPlaylist: (audioUrls: string[], audioDurations?: (number | null | undefined)[]) => void;
 }
 
 /**
@@ -18,6 +18,7 @@ interface UseAudioPlaylistReturn {
 export function useAudioPlaylist(autoPlay: boolean = true): UseAudioPlaylistReturn {
   const [selectedAudioIndex, setSelectedAudioIndex] = useState<number>(-1);
   const [audioUrls, setAudioUrls] = useState<string[]>([]);
+  const [audioDurations, setAudioDurations] = useState<(number | null | undefined)[]>([]);
   const audioPlayer = useAudioChannelContext('reflection');
 
   const handleAudioSelect = useCallback(async (index: number) => {
@@ -27,6 +28,8 @@ export function useAudioPlaylist(autoPlay: boolean = true): UseAudioPlaylistRetu
       console.warn('Audio not found at index:', index);
       return;
     }
+
+    const knownDurationSec = audioDurations[index] ?? undefined;
 
     if (index === selectedAudioIndex && audioPlayer.currentUri === audioUrl) {
       if (audioPlayer.isPlaying) {
@@ -41,14 +44,15 @@ export function useAudioPlaylist(autoPlay: boolean = true): UseAudioPlaylistRetu
     await audioPlayer.stop();
 
     if (autoPlay) {
-      await audioPlayer.loadAndPlay(audioUrl);
+      await audioPlayer.loadAndPlay(audioUrl, knownDurationSec);
     } else {
-      await audioPlayer.loadAudio(audioUrl);
+      await audioPlayer.loadAudio(audioUrl, knownDurationSec);
     }
-  }, [audioUrls, selectedAudioIndex, audioPlayer, autoPlay]);
+  }, [audioUrls, audioDurations, selectedAudioIndex, audioPlayer, autoPlay]);
 
-  const loadPlaylist = useCallback((urls: string[]) => {
+  const loadPlaylist = useCallback((urls: string[], durations: (number | null | undefined)[] = []) => {
     setAudioUrls(urls);
+    setAudioDurations(durations);
     const loadedIndex = audioPlayer.currentUri ? urls.indexOf(audioPlayer.currentUri) : -1;
     setSelectedAudioIndex(loadedIndex);
   }, [audioPlayer.currentUri]);

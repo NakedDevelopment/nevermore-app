@@ -6,7 +6,7 @@ import {
   formatFileSize,
   getConfiguredMaxUploadBytes,
 } from './uploadLimits';
-import { getAudioDurationsSec } from './audioDuration';
+import { getAudioDurationSec, getAudioDurationsSec } from './audioDuration';
 
 const DATABASE_ID = import.meta.env.VITE_APPWRITE_DATABASE_ID || '';
 const CONTENT_COLLECTION_ID = import.meta.env.VITE_APPWRITE_CONTENT_COLLECTION_ID || 'content';
@@ -37,6 +37,8 @@ export interface ContentData {
   fileDurations?: (number | null)[]; // Aligned with `files`
   mainContentRecoveryDurationSec?: number | null;
   mainContentSupportDurationSec?: number | null;
+  recoveryQuestionFileDurations?: (number | null)[]; // Aligned with `recoveryQuestionFiles`
+  supportQuestionFileDurations?: (number | null)[]; // Aligned with `supportQuestionFiles`
 }
 
 export interface UploadedFile {
@@ -274,6 +276,14 @@ export async function createContent(contentData: ContentData): Promise<string> {
       documentData.supportQuestionFiles = contentData.supportQuestionFiles;
     }
 
+    if (contentData.recoveryQuestionFileDurations && contentData.recoveryQuestionFileDurations.length > 0) {
+      documentData.recoveryQuestionFileDurations = contentData.recoveryQuestionFileDurations;
+    }
+
+    if (contentData.supportQuestionFileDurations && contentData.supportQuestionFileDurations.length > 0) {
+      documentData.supportQuestionFileDurations = contentData.supportQuestionFileDurations;
+    }
+
     // Create the row
     const response = await tablesDB.createRow({
       databaseId: DATABASE_ID,
@@ -346,10 +356,14 @@ export async function publishContent(
     let transcriptUrls: string[] = [];
     let mainContentRecoveryURL: string | undefined;
     let mainContentSupportURL: string | undefined;
+    let mainContentRecoveryDurationSec: number | null = null;
+    let mainContentSupportDurationSec: number | null = null;
     let recoveryImageUrls: string[] = [];
     let supportImageUrls: string[] = [];
     let recoveryQuestionUrls: string[] = [];
     let supportQuestionUrls: string[] = [];
+    let recoveryQuestionDurations: (number | null)[] = [];
+    let supportQuestionDurations: (number | null)[] = [];
 
     // Handle 40 Temptations file structure
     if (temptationFiles) {
@@ -357,8 +371,12 @@ export async function publishContent(
       // Upload Recovery question audio files
       if (temptationFiles.questionRecoveryFiles && temptationFiles.questionRecoveryFiles.length > 0) {
         onProgress?.(Math.round((currentStep / totalSteps) * 100));
-        const uploadedAudio = await uploadFiles(temptationFiles.questionRecoveryFiles);
+        const [uploadedAudio, durations] = await Promise.all([
+          uploadFiles(temptationFiles.questionRecoveryFiles),
+          getAudioDurationsSec(temptationFiles.questionRecoveryFiles),
+        ]);
         recoveryQuestionUrls = uploadedAudio.map((file) => file.url);
+        recoveryQuestionDurations = durations;
         currentStep++;
         onProgress?.(Math.round((currentStep / totalSteps) * 100));
       }
@@ -366,8 +384,12 @@ export async function publishContent(
       // Upload Support question audio files
       if (temptationFiles.questionSupportFiles && temptationFiles.questionSupportFiles.length > 0) {
         onProgress?.(Math.round((currentStep / totalSteps) * 100));
-        const uploadedAudio = await uploadFiles(temptationFiles.questionSupportFiles);
+        const [uploadedAudio, durations] = await Promise.all([
+          uploadFiles(temptationFiles.questionSupportFiles),
+          getAudioDurationsSec(temptationFiles.questionSupportFiles),
+        ]);
         supportQuestionUrls = uploadedAudio.map((file) => file.url);
+        supportQuestionDurations = durations;
         currentStep++;
         onProgress?.(Math.round((currentStep / totalSteps) * 100));
       }
@@ -377,8 +399,12 @@ export async function publishContent(
       // Upload Main Content (Recovery)
       if (temptationFiles.mainContentRecoveryFile) {
         onProgress?.(Math.round((currentStep / totalSteps) * 100));
-        const uploaded = await uploadFile(temptationFiles.mainContentRecoveryFile);
+        const [uploaded, duration] = await Promise.all([
+          uploadFile(temptationFiles.mainContentRecoveryFile),
+          getAudioDurationSec(temptationFiles.mainContentRecoveryFile),
+        ]);
         mainContentRecoveryURL = uploaded.url;
+        mainContentRecoveryDurationSec = duration;
         currentStep++;
         onProgress?.(Math.round((currentStep / totalSteps) * 100));
       }
@@ -386,8 +412,12 @@ export async function publishContent(
       // Upload Main Content (Support)
       if (temptationFiles.mainContentSupportFile) {
         onProgress?.(Math.round((currentStep / totalSteps) * 100));
-        const uploaded = await uploadFile(temptationFiles.mainContentSupportFile);
+        const [uploaded, duration] = await Promise.all([
+          uploadFile(temptationFiles.mainContentSupportFile),
+          getAudioDurationSec(temptationFiles.mainContentSupportFile),
+        ]);
         mainContentSupportURL = uploaded.url;
+        mainContentSupportDurationSec = duration;
         currentStep++;
         onProgress?.(Math.round((currentStep / totalSteps) * 100));
       }
@@ -465,12 +495,18 @@ export async function publishContent(
       tasks: tasks && tasks.length > 0 ? tasks : undefined,
       mainContentRecoveryURL,
       mainContentSupportURL,
+      mainContentRecoveryDurationSec,
+      mainContentSupportDurationSec,
       recoveryImages: recoveryImageUrls.length > 0 ? recoveryImageUrls : undefined,
       supportImages: supportImageUrls.length > 0 ? supportImageUrls : undefined,
       recoveryQuestionFiles:
         recoveryQuestionUrls.length > 0 ? recoveryQuestionUrls : undefined,
       supportQuestionFiles:
         supportQuestionUrls.length > 0 ? supportQuestionUrls : undefined,
+      recoveryQuestionFileDurations:
+        recoveryQuestionDurations.length > 0 ? recoveryQuestionDurations : undefined,
+      supportQuestionFileDurations:
+        supportQuestionDurations.length > 0 ? supportQuestionDurations : undefined,
     });
     currentStep++;
     onProgress?.(100);
@@ -496,6 +532,8 @@ export interface ContentDocument {
   fileDurations?: (number | null)[]; // Aligned with `files`
   recoveryQuestionFiles?: string[];
   supportQuestionFiles?: string[];
+  recoveryQuestionFileDurations?: (number | null)[]; // Aligned with `recoveryQuestionFiles`
+  supportQuestionFileDurations?: (number | null)[]; // Aligned with `supportQuestionFiles`
   transcript?: string; // Single URL (deprecated, use transcripts)
   transcripts?: string[]; // Array of URLs (for multiple transcript files)
   tasks?: string[];
@@ -503,6 +541,8 @@ export interface ContentDocument {
   // New fields for 40 Temptations
   mainContentRecoveryURL?: string;
   mainContentSupportURL?: string;
+  mainContentRecoveryDurationSec?: number | null;
+  mainContentSupportDurationSec?: number | null;
   transcriptRecoveryText?: string;
   transcriptSupportText?: string;
   recoveryImages?: string[];
@@ -635,6 +675,18 @@ export async function updateContent(
       documentData.supportQuestionFiles = null;
     }
 
+    if (contentData.recoveryQuestionFileDurations) {
+      documentData.recoveryQuestionFileDurations = contentData.recoveryQuestionFileDurations;
+    } else {
+      documentData.recoveryQuestionFileDurations = null;
+    }
+
+    if (contentData.supportQuestionFileDurations) {
+      documentData.supportQuestionFileDurations = contentData.supportQuestionFileDurations;
+    } else {
+      documentData.supportQuestionFileDurations = null;
+    }
+
     // Update the row
     const response = await tablesDB.updateRow({
       databaseId: DATABASE_ID,
@@ -750,6 +802,13 @@ export interface ExistingTemptationUrls {
   mainContentRecoveryURL?: string | null;
   recoveryImageUrls?: string[];
   supportImageUrls?: string[];
+  // Durations (seconds), index-aligned with the corresponding URL array/field
+  // above, carried over from the existing content record when re-saving
+  // without re-uploading that particular file.
+  questionRecoveryDurations?: (number | null)[];
+  questionSupportDurations?: (number | null)[];
+  mainContentSupportDurationSec?: number | null;
+  mainContentRecoveryDurationSec?: number | null;
 }
 
 /**
@@ -776,8 +835,12 @@ export async function updateTemptationContent(
     // Variables for URLs
     let newQuestionRecoveryUrls: string[] = [];
     let newQuestionSupportUrls: string[] = [];
+    let newQuestionRecoveryDurations: (number | null)[] = [];
+    let newQuestionSupportDurations: (number | null)[] = [];
     let mainContentSupportURL: string | undefined;
     let mainContentRecoveryURL: string | undefined;
+    let mainContentSupportDurationSec: number | null = null;
+    let mainContentRecoveryDurationSec: number | null = null;
     let newRecoveryImageUrls: string[] = [];
     let newSupportImageUrls: string[] = [];
 
@@ -785,8 +848,12 @@ export async function updateTemptationContent(
     // Upload new Recovery question audio files
     if (temptationFiles.questionRecoveryFiles && temptationFiles.questionRecoveryFiles.length > 0) {
       onProgress?.(Math.round((currentStep / totalSteps) * 100));
-      const uploadedQuestions = await uploadFiles(temptationFiles.questionRecoveryFiles);
+      const [uploadedQuestions, durations] = await Promise.all([
+        uploadFiles(temptationFiles.questionRecoveryFiles),
+        getAudioDurationsSec(temptationFiles.questionRecoveryFiles),
+      ]);
       newQuestionRecoveryUrls = uploadedQuestions.map((file) => file.url);
+      newQuestionRecoveryDurations = durations;
       currentStep++;
       onProgress?.(Math.round((currentStep / totalSteps) * 100));
     }
@@ -794,8 +861,12 @@ export async function updateTemptationContent(
     // Upload new Support question audio files
     if (temptationFiles.questionSupportFiles && temptationFiles.questionSupportFiles.length > 0) {
       onProgress?.(Math.round((currentStep / totalSteps) * 100));
-      const uploadedQuestions = await uploadFiles(temptationFiles.questionSupportFiles);
+      const [uploadedQuestions, durations] = await Promise.all([
+        uploadFiles(temptationFiles.questionSupportFiles),
+        getAudioDurationsSec(temptationFiles.questionSupportFiles),
+      ]);
       newQuestionSupportUrls = uploadedQuestions.map((file) => file.url);
+      newQuestionSupportDurations = durations;
       currentStep++;
       onProgress?.(Math.round((currentStep / totalSteps) * 100));
     }
@@ -803,8 +874,12 @@ export async function updateTemptationContent(
     // Upload Main Content (Support)
     if (temptationFiles.mainContentSupportFile) {
       onProgress?.(Math.round((currentStep / totalSteps) * 100));
-      const uploaded = await uploadFile(temptationFiles.mainContentSupportFile);
+      const [uploaded, duration] = await Promise.all([
+        uploadFile(temptationFiles.mainContentSupportFile),
+        getAudioDurationSec(temptationFiles.mainContentSupportFile),
+      ]);
       mainContentSupportURL = uploaded.url;
+      mainContentSupportDurationSec = duration;
       currentStep++;
       onProgress?.(Math.round((currentStep / totalSteps) * 100));
     }
@@ -812,8 +887,12 @@ export async function updateTemptationContent(
     // Upload Main Content (Recovery)
     if (temptationFiles.mainContentRecoveryFile) {
       onProgress?.(Math.round((currentStep / totalSteps) * 100));
-      const uploaded = await uploadFile(temptationFiles.mainContentRecoveryFile);
+      const [uploaded, duration] = await Promise.all([
+        uploadFile(temptationFiles.mainContentRecoveryFile),
+        getAudioDurationSec(temptationFiles.mainContentRecoveryFile),
+      ]);
       mainContentRecoveryURL = uploaded.url;
+      mainContentRecoveryDurationSec = duration;
       currentStep++;
       onProgress?.(Math.round((currentStep / totalSteps) * 100));
     }
@@ -849,9 +928,31 @@ export async function updateTemptationContent(
     const allRecoveryImageUrls = [...(existingUrls.recoveryImageUrls || []), ...newRecoveryImageUrls];
     const allSupportImageUrls = [...(existingUrls.supportImageUrls || []), ...newSupportImageUrls];
 
+    // Durations follow the same existing+new concatenation as their URL
+    // arrays above, so index alignment with allQuestionRecoveryUrls/
+    // allQuestionSupportUrls is preserved.
+    const allQuestionRecoveryDurations = [
+      ...(existingUrls.questionRecoveryDurations || []),
+      ...newQuestionRecoveryDurations,
+    ];
+    const allQuestionSupportDurations = [
+      ...(existingUrls.questionSupportDurations || []),
+      ...newQuestionSupportDurations,
+    ];
+
     // Use new URL if uploaded, otherwise keep existing
     const finalMainContentSupportURL = mainContentSupportURL || existingUrls.mainContentSupportURL || undefined;
     const finalMainContentRecoveryURL = mainContentRecoveryURL || existingUrls.mainContentRecoveryURL || undefined;
+
+    // A new upload's duration always wins (even if decoding failed and it's
+    // null) since the old duration no longer corresponds to the new file.
+    // Only fall back to the existing duration when no new file was uploaded.
+    const finalMainContentSupportDurationSec = temptationFiles.mainContentSupportFile
+      ? mainContentSupportDurationSec
+      : existingUrls.mainContentSupportDurationSec ?? undefined;
+    const finalMainContentRecoveryDurationSec = temptationFiles.mainContentRecoveryFile
+      ? mainContentRecoveryDurationSec
+      : existingUrls.mainContentRecoveryDurationSec ?? undefined;
 
     // Update content document
     onProgress?.(Math.round((currentStep / totalSteps) * 100));
@@ -863,8 +964,14 @@ export async function updateTemptationContent(
         allQuestionRecoveryUrls.length > 0 ? allQuestionRecoveryUrls : undefined,
       supportQuestionFiles:
         allQuestionSupportUrls.length > 0 ? allQuestionSupportUrls : undefined,
+      recoveryQuestionFileDurations:
+        allQuestionRecoveryDurations.length > 0 ? allQuestionRecoveryDurations : undefined,
+      supportQuestionFileDurations:
+        allQuestionSupportDurations.length > 0 ? allQuestionSupportDurations : undefined,
       mainContentSupportURL: finalMainContentSupportURL,
       mainContentRecoveryURL: finalMainContentRecoveryURL,
+      mainContentSupportDurationSec: finalMainContentSupportDurationSec,
+      mainContentRecoveryDurationSec: finalMainContentRecoveryDurationSec,
       recoveryImages: allRecoveryImageUrls.length > 0 ? allRecoveryImageUrls : undefined,
       supportImages: allSupportImageUrls.length > 0 ? allSupportImageUrls : undefined,
     });

@@ -100,22 +100,35 @@ additive: if `knownDurationSec` is omitted, behavior is unchanged.
 
 **Schema (Appwrite `content` collection):** `fileDurations` (Float array, index-
 aligned with `files`), `mainContentRecoveryDurationSec` (Float),
-`mainContentSupportDurationSec` (Float) — all optional. Added July 2026.
-`recoveryQuestionFileDurations`/`supportQuestionFileDurations` (Float arrays,
-aligned with the corresponding question-file URL arrays) are the natural next
-attributes once reflection-question audio is wired the same way.
+`mainContentSupportDurationSec` (Float), `recoveryQuestionFileDurations`/
+`supportQuestionFileDurations` (Float arrays, index-aligned with
+`recoveryQuestionFiles`/`supportQuestionFiles`) — all optional. Added July 2026.
 
-**How to apply:** as of July 2026 only the 40-Day journey day audio
-(`DayData.audioDurationSec`, from `content.fileDurations[0]`) is wired through to
-`loadAndPlay` in `FortyDay.tsx`. TemptationDetails' main content
-(`mainContentRecoveryURL`/`mainContentSupportURL`) and reflection question audio
-are NOT wired yet — `useContentPresentation`/`useAudioPlaylist`/`Transcript.tsx`
-still call `loadAudio`/`loadAndPlay` without a duration. When extending: thread
-`content.mainContentRecoveryDurationSec`/`mainContentSupportDurationSec` through
-`useContentPresentation`, and a `recoveryQuestionFileDurations`/
-`supportQuestionFileDurations`-backed array through `useAudioPlaylist.loadPlaylist`
-so `handleAudioSelect` can pass `durations[index]` to `loadAndPlay`. Follow the
-same admin-side pattern as `Journey40Day.tsx`: compute duration client-side at
-upload with `getAudioDurationsSec`, keep it index-aligned with its URL array
-across add/remove, and merge with existing durations on edit exactly like the
-existing-URL merge already does.
+**How to apply:** as of July 2026 this is wired everywhere audio plays:
+- 40-Day journey day audio: `DayData.audioDurationSec` (from
+  `content.fileDurations[0]`) → `loadAndPlay` in `FortyDay.tsx`.
+- TemptationDetails main content: `useContentPresentation` exposes role-specific
+  `mainContentDurationSec` (`mainContentRecoveryDurationSec`/
+  `mainContentSupportDurationSec`), passed to `mainContentAudioPlayer.loadAndPlay`
+  in `TemptationDetails.tsx`.
+- TemptationDetails reflection/question audio: `useContentPresentation` exposes
+  `audioFileDurations` (index-aligned with `audioFiles`, same recovery/support/
+  legacy fallback branch as the URLs), passed to `useAudioPlaylist.loadPlaylist`,
+  which threads `durations[index]` into `loadAndPlay`/`loadAudio` in
+  `handleAudioSelect`.
+- `Transcript.tsx` still calls `loadAudio` without a duration — it navigates from
+  an already-loaded track (`initialPositionSec`/`resumePlaying` from a live
+  `getPlaybackSnapshot()`), so the channel already has its duration from
+  whichever screen loaded it originally; no gap here.
+
+Admin-side (`admin/src/lib/content.ts`): `publishContent` (create) and
+`updateTemptationContent` (edit) both compute durations client-side with
+`getAudioDurationSec`/`getAudioDurationsSec` at upload time, exactly like
+`Journey40Day.tsx`/`updateContentWithFiles`. On edit, `ExistingTemptationUrls`
+carries forward `mainContentRecoveryDurationSec`/`mainContentSupportDurationSec`/
+`questionRecoveryDurations`/`questionSupportDurations` for files that aren't
+being re-uploaded, concatenated with newly-computed durations in the same order
+existing+new URLs are concatenated — keep any future edits to the URL merge
+logic and the duration merge logic in lockstep, or they'll drift out of index
+alignment. `backfillDurations.ts` covers all four duration fields for legacy
+content that predates this tracking.

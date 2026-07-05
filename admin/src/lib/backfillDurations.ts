@@ -80,6 +80,38 @@ export async function backfillAudioDurations(
         patch.mainContentSupportDurationSec = await getAudioDurationFromUrl(mainSupportUrl);
       }
 
+      const recoveryQuestionFiles = Array.isArray(row.recoveryQuestionFiles)
+        ? (row.recoveryQuestionFiles as string[])
+        : [];
+      const existingRecoveryQuestionDurations = Array.isArray(row.recoveryQuestionFileDurations)
+        ? (row.recoveryQuestionFileDurations as unknown[])
+        : [];
+      if (recoveryQuestionFiles.length > 0 && needsBackfill(recoveryQuestionFiles, existingRecoveryQuestionDurations)) {
+        patch.recoveryQuestionFileDurations = await Promise.all(
+          recoveryQuestionFiles.map((url, idx) =>
+            isValidDuration(existingRecoveryQuestionDurations[idx])
+              ? Promise.resolve(existingRecoveryQuestionDurations[idx])
+              : getAudioDurationFromUrl(url)
+          )
+        );
+      }
+
+      const supportQuestionFiles = Array.isArray(row.supportQuestionFiles)
+        ? (row.supportQuestionFiles as string[])
+        : [];
+      const existingSupportQuestionDurations = Array.isArray(row.supportQuestionFileDurations)
+        ? (row.supportQuestionFileDurations as unknown[])
+        : [];
+      if (supportQuestionFiles.length > 0 && needsBackfill(supportQuestionFiles, existingSupportQuestionDurations)) {
+        patch.supportQuestionFileDurations = await Promise.all(
+          supportQuestionFiles.map((url, idx) =>
+            isValidDuration(existingSupportQuestionDurations[idx])
+              ? Promise.resolve(existingSupportQuestionDurations[idx])
+              : getAudioDurationFromUrl(url)
+          )
+        );
+      }
+
       if (Object.keys(patch).length > 0) {
         await tablesDB.updateRow({
           databaseId: DATABASE_ID,

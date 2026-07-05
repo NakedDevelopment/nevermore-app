@@ -16,6 +16,9 @@ export interface Content {
   type: string;
   mainContentRecoveryURL?: string;
   mainContentSupportURL?: string;
+  /** Durations (seconds) for the main content tracks above, set by the admin at upload time. */
+  mainContentRecoveryDurationSec?: number;
+  mainContentSupportDurationSec?: number;
   /**
    * In-app transcript body. Appwrite attributes must be exactly `transcriptRecoveryText` / `transcriptSupportText`
    * (use a large text type: mediumtext/longtext or high-size string per your Appwrite version).
@@ -30,6 +33,9 @@ export interface Content {
   fileDurations?: number[];
   recoveryQuestionFiles?: string[];
   supportQuestionFiles?: string[];
+  /** Durations (seconds), index-aligned with `recoveryQuestionFiles`/`supportQuestionFiles`. */
+  recoveryQuestionFileDurations?: number[];
+  supportQuestionFileDurations?: number[];
   tasks?: string[];
   /** If true, this content is free (no subscription). For journey: only Day 1–3 can be free. */
   isFree?: boolean;
@@ -105,6 +111,28 @@ export function getPresentationQuestionFileLists(content: Content): {
   const legacy = normalizeUrlStringList(row.files);
   const recovery = unionUrlStringLists(row.recoveryQuestionFiles, row.recovery_question_files);
   const support = unionUrlStringLists(row.supportQuestionFiles, row.support_question_files);
+  return { legacy, recovery, support };
+}
+
+/**
+ * Durations (seconds) for the reflection question audio lists above, index-
+ * aligned with the *raw* `recoveryQuestionFiles`/`supportQuestionFiles`/`files`
+ * arrays (not the deduped union in `getPresentationQuestionFileLists`) since
+ * that's what the admin writes them index-aligned against.
+ */
+export function getPresentationQuestionFileDurationLists(content: Content): {
+  legacy: (number | null)[];
+  recovery: (number | null)[];
+  support: (number | null)[];
+} {
+  const row = content as Record<string, unknown>;
+  const legacy = Array.isArray(row.fileDurations) ? (row.fileDurations as (number | null)[]) : [];
+  const recovery = Array.isArray(row.recoveryQuestionFileDurations)
+    ? (row.recoveryQuestionFileDurations as (number | null)[])
+    : [];
+  const support = Array.isArray(row.supportQuestionFileDurations)
+    ? (row.supportQuestionFileDurations as (number | null)[])
+    : [];
   return { legacy, recovery, support };
 }
 

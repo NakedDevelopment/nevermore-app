@@ -93,10 +93,12 @@ export default function TemptationDetails() {
   // Get role-specific content presentation data
   const {
     mainContentURL,
+    mainContentDurationSec,
     transcriptTextFromFields,
     images,
     displayImage,
     audioFiles,
+    audioFileDurations,
   } = useContentPresentation(content, activeButton);
   const imagePrefetchKey = React.useMemo(() => images.join('|'), [images]);
   const audioPrefetchKey = React.useMemo(() => audioFiles.join('|'), [audioFiles]);
@@ -153,14 +155,14 @@ export default function TemptationDetails() {
 
   const audioFilesRef = React.useRef<string[]>([]);
   React.useEffect(() => {
-    const hasChanged = audioFiles.length !== audioFilesRef.current.length || 
+    const hasChanged = audioFiles.length !== audioFilesRef.current.length ||
                        audioFiles.some((file, idx) => file !== audioFilesRef.current[idx]);
-    
+
     if (hasChanged) {
       audioFilesRef.current = audioFiles;
-      loadPlaylist(audioFiles);
+      loadPlaylist(audioFiles, audioFileDurations);
     }
-  }, [audioFiles, loadPlaylist]);
+  }, [audioFiles, audioFileDurations, loadPlaylist]);
 
   const handleOpenFullTranscript = React.useCallback(() => {
     if (!content || !hasReadableTranscript) {
@@ -201,8 +203,8 @@ export default function TemptationDetails() {
       return;
     }
     await reflectionAudioPlayer.pause();
-    await mainContentAudioPlayer.loadAndPlay(mainContentURL);
-  }, [isActiveMainTrack, isMainTrackActiveOrBuffering, mainContentAudioPlayer, reflectionAudioPlayer, mainContentURL]);
+    await mainContentAudioPlayer.loadAndPlay(mainContentURL, mainContentDurationSec);
+  }, [isActiveMainTrack, isMainTrackActiveOrBuffering, mainContentAudioPlayer, reflectionAudioPlayer, mainContentURL, mainContentDurationSec]);
 
   // Recovery and Support share the same global 'main' channel, so switching
   // tabs while audio plays leaves this tab showing inactive controls for a

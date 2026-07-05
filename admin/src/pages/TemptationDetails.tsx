@@ -51,10 +51,17 @@ export const TemptationDetails = () => {
   const [questionSupportFiles, setQuestionSupportFiles] = useState<File[]>([]);
   const [questionRecoveryUrls, setQuestionRecoveryUrls] = useState<string[]>([]);
   const [questionSupportUrls, setQuestionSupportUrls] = useState<string[]>([]);
+  // Durations (seconds) for existing question audio URLs, index-aligned with
+  // the URL arrays above. Durations for newly uploaded files are computed
+  // server-side in updateTemptationContent.
+  const [questionRecoveryDurations, setQuestionRecoveryDurations] = useState<(number | null)[]>([]);
+  const [questionSupportDurations, setQuestionSupportDurations] = useState<(number | null)[]>([]);
   const [mainContentSupportFile, setMainContentSupportFile] = useState<File | null>(null);
   const [mainContentSupportUrl, setMainContentSupportUrl] = useState<string | null>(null);
+  const [mainContentSupportDurationSec, setMainContentSupportDurationSec] = useState<number | null>(null);
   const [mainContentRecoveryFile, setMainContentRecoveryFile] = useState<File | null>(null);
   const [mainContentRecoveryUrl, setMainContentRecoveryUrl] = useState<string | null>(null);
+  const [mainContentRecoveryDurationSec, setMainContentRecoveryDurationSec] = useState<number | null>(null);
   const [transcriptSupportText, setTranscriptSupportText] = useState('');
   const [transcriptRecoveryText, setTranscriptRecoveryText] = useState('');
   const [recoveryImages, setRecoveryImages] = useState<Array<{ id: string; src: string; file?: File; url?: string }>>([]);
@@ -94,19 +101,25 @@ export const TemptationDetails = () => {
             if (recQ.length > 0 || supQ.length > 0) {
               setQuestionRecoveryUrls(recQ);
               setQuestionSupportUrls(supQ);
+              setQuestionRecoveryDurations(contentDoc.recoveryQuestionFileDurations || []);
+              setQuestionSupportDurations(contentDoc.supportQuestionFileDurations || []);
             } else if (contentDoc.files && contentDoc.files.length > 0) {
               setQuestionRecoveryUrls([...contentDoc.files]);
               setQuestionSupportUrls([]);
+              setQuestionRecoveryDurations(contentDoc.fileDurations || []);
+              setQuestionSupportDurations([]);
             }
-            
+
             // Load Main Content (Support) URL
             if (contentDoc.mainContentSupportURL) {
               setMainContentSupportUrl(contentDoc.mainContentSupportURL);
+              setMainContentSupportDurationSec(contentDoc.mainContentSupportDurationSec ?? null);
             }
-            
+
             // Load Main Content (Recovery) URL
             if (contentDoc.mainContentRecoveryURL) {
               setMainContentRecoveryUrl(contentDoc.mainContentRecoveryURL);
+              setMainContentRecoveryDurationSec(contentDoc.mainContentRecoveryDurationSec ?? null);
             }
             
             setTranscriptSupportText(
@@ -337,6 +350,10 @@ export const TemptationDetails = () => {
         mainContentRecoveryURL: mainContentRecoveryUrl,
         recoveryImageUrls: existingRecoveryImageUrls,
         supportImageUrls: existingSupportImageUrls,
+        questionRecoveryDurations,
+        questionSupportDurations,
+        mainContentSupportDurationSec,
+        mainContentRecoveryDurationSec,
       };
       
       // Update content (uploads new files and updates content document, preserving existing URLs)
@@ -367,17 +384,25 @@ export const TemptationDetails = () => {
         if (uRec.length > 0 || uSup.length > 0) {
           setQuestionRecoveryUrls(uRec);
           setQuestionSupportUrls(uSup);
+          setQuestionRecoveryDurations(updatedContent.recoveryQuestionFileDurations || []);
+          setQuestionSupportDurations(updatedContent.supportQuestionFileDurations || []);
         } else if (updatedContent.files && updatedContent.files.length > 0) {
           setQuestionRecoveryUrls([...updatedContent.files]);
           setQuestionSupportUrls([]);
+          setQuestionRecoveryDurations(updatedContent.fileDurations || []);
+          setQuestionSupportDurations([]);
         } else {
           setQuestionRecoveryUrls([]);
           setQuestionSupportUrls([]);
+          setQuestionRecoveryDurations([]);
+          setQuestionSupportDurations([]);
         }
-        
+
         // Reload Main Content URLs
         setMainContentSupportUrl(updatedContent.mainContentSupportURL || null);
         setMainContentRecoveryUrl(updatedContent.mainContentRecoveryURL || null);
+        setMainContentSupportDurationSec(updatedContent.mainContentSupportDurationSec ?? null);
+        setMainContentRecoveryDurationSec(updatedContent.mainContentRecoveryDurationSec ?? null);
         
         setTranscriptSupportText(
           typeof updatedContent.transcriptSupportText === 'string' ? updatedContent.transcriptSupportText : ''
@@ -640,6 +665,7 @@ export const TemptationDetails = () => {
                           ? () => {
                               setMainContentSupportFile(null);
                               setMainContentSupportUrl(null);
+                              setMainContentSupportDurationSec(null);
                             }
                           : undefined
                       }
@@ -657,6 +683,7 @@ export const TemptationDetails = () => {
                           ? () => {
                               setMainContentRecoveryFile(null);
                               setMainContentRecoveryUrl(null);
+                              setMainContentRecoveryDurationSec(null);
                             }
                           : undefined
                       }
@@ -701,6 +728,7 @@ export const TemptationDetails = () => {
                         isEditing
                           ? () => {
                               setQuestionRecoveryUrls((prev) => prev.filter((_, i) => i !== index));
+                              setQuestionRecoveryDurations((prev) => prev.filter((_, i) => i !== index));
                             }
                           : undefined
                       }
@@ -745,6 +773,7 @@ export const TemptationDetails = () => {
                         isEditing
                           ? () => {
                               setQuestionSupportUrls((prev) => prev.filter((_, i) => i !== index));
+                              setQuestionSupportDurations((prev) => prev.filter((_, i) => i !== index));
                             }
                           : undefined
                       }

@@ -3,15 +3,20 @@ import {
   Content,
   getPresentationImageLists,
   getPresentationQuestionFileLists,
+  getPresentationQuestionFileDurationLists,
 } from '../services/content.service';
 
 interface UseContentPresentationReturn {
   mainContentURL: string | null;
+  /** Known duration (seconds) for `mainContentURL`, computed by the admin at upload time. */
+  mainContentDurationSec: number | undefined;
   /** Plain text from CMS (transcriptRecoveryText / transcriptSupportText). */
   transcriptTextFromFields: string | null;
   images: string[];
   displayImage: string;
   audioFiles: string[];
+  /** Known durations (seconds), index-aligned with `audioFiles`. */
+  audioFileDurations: (number | null)[];
   hasAudio: boolean;
   hasTranscript: boolean;
   hasImages: boolean;
@@ -35,10 +40,12 @@ export function useContentPresentation(
     if (!content) {
       return {
         mainContentURL: null,
+        mainContentDurationSec: undefined,
         transcriptTextFromFields: null,
         images: [],
         displayImage: DEFAULT_IMAGE,
         audioFiles: [],
+        audioFileDurations: [],
         hasAudio: false,
         hasTranscript: false,
         hasImages: false,
@@ -46,10 +53,14 @@ export function useContentPresentation(
     }
 
     // Get role-specific URLs
-    const mainContentURL = role === 'recovery' 
+    const mainContentURL = role === 'recovery'
       ? content.mainContentRecoveryURL || null
       : content.mainContentSupportURL || null;
-    
+
+    const mainContentDurationSec = role === 'recovery'
+      ? content.mainContentRecoveryDurationSec
+      : content.mainContentSupportDurationSec;
+
     const transcriptTextFromFieldsRaw = role === 'recovery'
       ? content.transcriptRecoveryText
       : content.transcriptSupportText;
@@ -84,12 +95,30 @@ export function useContentPresentation(
           ? supportQuestionFiles
           : legacyQuestionFiles;
 
+    const {
+      legacy: legacyQuestionDurations,
+      recovery: recoveryQuestionDurations,
+      support: supportQuestionDurations,
+    } = getPresentationQuestionFileDurationLists(content);
+    // Mirrors the exact same branch decision as `audioFiles` above so
+    // audioFileDurations[i] stays aligned with audioFiles[i].
+    const audioFileDurations =
+      role === 'recovery'
+        ? recoveryQuestionFiles.length > 0
+          ? recoveryQuestionDurations
+          : legacyQuestionDurations
+        : supportQuestionFiles.length > 0
+          ? supportQuestionDurations
+          : legacyQuestionDurations;
+
     return {
       mainContentURL,
+      mainContentDurationSec,
       transcriptTextFromFields,
       images,
       displayImage,
       audioFiles,
+      audioFileDurations,
       hasAudio: audioFiles.length > 0,
       hasTranscript: !!transcriptTextFromFields,
       hasImages: images.length > 0,
