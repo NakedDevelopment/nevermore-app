@@ -414,6 +414,32 @@ function useAudioChannel(
         audioCacheService.warmAudio(uri).catch((error) => {
           console.warn('Failed to warm streamed audio cache:', error);
         });
+      } else if (isRemoteUri(uri) && playableUri !== uri) {
+        // Playing a cached local copy of a remote track. Appwrite Storage URLs
+        // carry no file extension, so a non-mp3 track can get cached under the
+        // wrong extension: it plays and tracks elapsed time fine, but the
+        // native decoder can't parse its duration/seek metadata, leaving the
+        // countdown stuck at '--:--'. Because this is a local file the
+        // streaming-health check above is skipped, so verify duration here and,
+        // if it never resolves, recover by streaming the remote source (which
+        // identifies the container from the live response), resuming from where
+        // local playback had already reached.
+        const durationResolved = await waitForPlaybackProgress(operationId);
+        if (!durationResolved && operationId === operationIdRef.current) {
+          let resumeFromSec = 0;
+          try {
+            resumeFromSec = isFinite(player.currentTime) ? player.currentTime : 0;
+          } catch {
+            resumeFromSec = 0;
+          }
+
+          setIsLoading(true);
+          setLoadingUri(uri);
+          await playResolvedSource(uri, uri, operationId, resumeFromSec);
+          if (operationId !== operationIdRef.current) return;
+          setIsLoading(false);
+          setLoadingUri(null);
+        }
       }
     } catch (error) {
       if (operationId !== operationIdRef.current) return;
