@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Skill(code-review)",
+      "Bash(env)",
+      "Bash(echo \"exit:$?\")",
+      "Bash(eas --version)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); e=d.get\\('expo',{}\\); print\\('version:', e.get\\('version'\\)\\); print\\('ios:', e.get\\('ios'\\)\\)\")"
+    ]
+  }
+}
