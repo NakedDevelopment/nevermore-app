@@ -101,7 +101,6 @@ export default function TemptationDetails() {
     audioFileDurations,
   } = useContentPresentation(content, activeButton);
   const imagePrefetchKey = React.useMemo(() => images.join('|'), [images]);
-  const audioPrefetchKey = React.useMemo(() => audioFiles.join('|'), [audioFiles]);
   
   const isActiveMainTrack = !!mainContentURL && mainContentAudioPlayer.currentUri === mainContentURL;
   const isMainTrackBuffering = !!mainContentURL && mainContentAudioPlayer.loadingUri === mainContentURL;
@@ -112,19 +111,23 @@ export default function TemptationDetails() {
       Image.prefetch(imageUrl).catch(() => {});
     });
 
-    const audioWarmTimer = setTimeout(() => {
-      if (mainContentURL) {
-        audioCacheService.warmAudio(mainContentURL).catch(() => {});
-      }
+    // Background audio downloading is intentionally limited to the "Internal
+    // Thoughts" content only — everything else streams on tap and caches
+    // afterward for next time via loadAndPlay's own warmAudio call. This is a
+    // deliberate data-usage/bandwidth-contention tradeoff, not an oversight:
+    // see .agents/memory/audio-playback-architecture.md.
+    const isOnboardingHighlightContent = content?.title?.trim().toLowerCase() === 'internal thoughts';
+    if (!isOnboardingHighlightContent || !mainContentURL) {
+      return;
+    }
 
-      audioFiles.slice(0, 2).forEach((audioUrl) => {
-        audioCacheService.warmAudio(audioUrl).catch(() => {});
-      });
+    const audioWarmTimer = setTimeout(() => {
+      audioCacheService.warmAudio(mainContentURL).catch(() => {});
     }, 1200);
 
     return () => clearTimeout(audioWarmTimer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mainContentURL, audioPrefetchKey, imagePrefetchKey]);
+  }, [content?.title, mainContentURL, imagePrefetchKey]);
   
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   

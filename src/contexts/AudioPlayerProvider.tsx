@@ -1,4 +1,4 @@
-import { useAudioPlayer as useExpoAudioPlayer, AudioPlayer, AudioSource, setAudioModeAsync, setIsAudioActiveAsync } from 'expo-audio';
+import { useAudioPlayer as useExpoAudioPlayer, useAudioPlayerStatus, AudioPlayer, AudioSource, setAudioModeAsync, setIsAudioActiveAsync } from 'expo-audio';
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import { audioCacheService } from '../services/audioCache.service';
@@ -104,48 +104,139 @@ const configureBackgroundAudioSession = async () => {
  * so playback survives screen transitions instead of being torn down on unmount.
  *
  * `onPlayStart` lets the provider enforce a single audible channel at a time.
+ *
+ * Playback/progress state (isPlaying/currentTime/duration/etc.) is derived
+ * every render from expo-audio's own `useAudioPlayerStatus(player)` — a
+ * reactive subscription to the native player's status-update events — rather
+ * than hand-polling `player.playing`/`player.currentTime` on a setInterval.
+ * The previous polling approach had two independent writers racing on the
+ * same `isPlaying` state (an optimistic write right after `player.play()`,
+ * and the poll itself), which is what produced the play/pause button
+ * flickering Pause -> Play -> Pause on tap. With a single reactive source of
+ * truth there's nothing left to race.
  */
 function useAudioChannel(
   player: AudioPlayer,
   onPlayStart: () => void
 ): InternalAudioChannel {
+  const status = useAudioPlayerStatus(player);
   const [isLoading, setIsLoading] = useState(false);
   const [loadingUri, setLoadingUri] = useState<string | null>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [currentUri, setCurrentUri] = useState<string | null>(null);
-  const [currentTime, setCurrentTime] = useState('00:00');
-  const [totalTime, setTotalTime] = useState('--:--');
-  const [remainingTime, setRemainingTime] = useState('--:--');
-  const [progress, setProgress] = useState(0);
   const previousVolumeRef = useRef<number>(1.0);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const operationIdRef = useRef(0);
   // A duration computed ahead of time and stored on the content record (see
   // `knownDurationSec` on loadAudio/loadAndPlay). Used whenever the native
-  // player hasn't (or never does) resolve its own `duration` from the stream.
+  // player hasn't (or never does) resolve its own `duration` from the
+  // stream. Kept as a ref (not state): every call site that sets it also
+  // sets other state in the same breath, which already triggers the
+  // re-render that picks up the new value — a ref just avoids the get-stale-
+  // value-from-an-old-render trap that state would create for the memoized
+  // `getPlaybackSnapshot` callback below.
   const knownDurationRef = useRef<number | null>(null);
+  // Tracks a fresh-load operation waiting for the native player to actually
+  // confirm playback (status.playing) before the loading spinner clears —
+  // see the effect below and armPlayConfirmation. Resume/pause paths never
+  // set this; only a genuine loadAndPlay fetch does.
+  const pendingPlayConfirmationRef = useRef<number | null>(null);
+  const playConfirmationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const getEffectiveDuration = (): number | null => {
     if (isFinite(player.duration) && player.duration > 0) return player.duration;
     return knownDurationRef.current;
   };
 
-  const syncDurationWhenAvailable = async (operationId: number, maxAttempts = 30) => {
-    let attempts = 0;
-    while ((!isFinite(player.duration) || player.duration === 0) && attempts < maxAttempts) {
-      if (operationId !== operationIdRef.current) return;
-      await new Promise(resolve => setTimeout(resolve, 100));
-      attempts++;
+  const clearPendingPlayConfirmation = () => {
+    pendingPlayConfirmationRef.current = null;
+    if (playConfirmationTimeoutRef.current) {
+      clearTimeout(playConfirmationTimeoutRef.current);
+      playConfirmationTimeoutRef.current = null;
     }
-    if (operationId !== operationIdRef.current) return;
-
-    const effectiveDuration = getEffectiveDuration();
-    const durationKnown = effectiveDuration != null;
-    setTotalTime(durationKnown ? formatTime(effectiveDuration * 1000) : '--:--');
-    setRemainingTime(durationKnown ? formatTime(Math.max(0, effectiveDuration * 1000 - player.currentTime * 1000)) : '--:--');
-    setProgress(durationKnown ? player.currentTime / effectiveDuration : 0);
   };
+
+  // Marks a fresh-load operation as waiting for the native player to confirm
+  // playback (status.playing) before the loading spinner clears. The actual
+  // wait logic lives in the status-watching effect below, which reads the
+  // native `status.isBuffering` signal instead of guessing off a fixed
+  // timeout — see that effect for why.
+  const armPlayConfirmation = (operationId: number) => {
+    pendingPlayConfirmationRef.current = operationId;
+  };
+
+  // Everything below is derived straight from `status` (and the small bits
+  // of app-level bookkeeping above) — no separate state to keep in sync.
+  const isPlaying = currentUri != null && status.playing && !status.didJustFinish;
+  const effectiveDuration = (isFinite(status.duration) && status.duration > 0)
+    ? status.duration
+    : knownDurationRef.current;
+  const durationKnown = currentUri != null && effectiveDuration != null;
+  const currentTimeSec = currentUri != null && isFinite(status.currentTime) ? status.currentTime : 0;
+  const currentTime = formatTime(currentTimeSec * 1000);
+  const totalTime = durationKnown ? formatTime(effectiveDuration * 1000) : '--:--';
+  const remainingTime = durationKnown
+    ? formatTime(Math.max(0, effectiveDuration * 1000 - currentTimeSec * 1000))
+    : '--:--';
+  const progress = currentUri == null
+    ? 0
+    : status.didJustFinish
+      ? 1
+      : (durationKnown ? currentTimeSec / effectiveDuration : 0);
+
+  // Confirms a pending fresh-load play (armed by armPlayConfirmation), then
+  // clears the spinner. Keyed on the whole `status` object rather than
+  // `status.playing` — expo-audio's useEvent hands back a new object on
+  // every native emission, so keying on the object guarantees this re-checks
+  // on every event instead of only when a single field's value differs from
+  // last render.
+  //
+  // status.playing is checked first and unconditionally clears the spinner
+  // — that's the one thing that can never leave the spinner stuck up over
+  // audio that's actually playing (unlike an earlier, reverted approach that
+  // gated success on `duration` resolving, which many legitimately-streaming
+  // tracks never do — see .agents/memory/audio-playback-architecture.md).
+  //
+  // Below that, status.isBuffering is a real native signal (not a guess):
+  // while the player reports it's still buffering, the spinner stays up no
+  // matter how long that genuinely takes (tens of seconds on slow cellular)
+  // — the grace timer is never armed during that window. Only once
+  // buffering has genuinely finished but `playing` still hasn't flipped do
+  // we give it a short, bounded grace period (covering the ~500ms iOS
+  // status-event lag, or a truly stalled player) before giving up on the
+  // spinner. The timer only ever touches the isLoading UI boolean, never
+  // playback itself.
+  const PLAY_CONFIRMATION_GRACE_MS = 3000;
+  useEffect(() => {
+    const pendingId = pendingPlayConfirmationRef.current;
+    if (pendingId === null || pendingId !== operationIdRef.current) return;
+
+    if (status.playing) {
+      clearPendingPlayConfirmation();
+      setIsLoading(false);
+      setLoadingUri(null);
+      return;
+    }
+
+    if (status.isBuffering) {
+      if (playConfirmationTimeoutRef.current) {
+        clearTimeout(playConfirmationTimeoutRef.current);
+        playConfirmationTimeoutRef.current = null;
+      }
+      return;
+    }
+
+    if (!playConfirmationTimeoutRef.current) {
+      playConfirmationTimeoutRef.current = setTimeout(() => {
+        playConfirmationTimeoutRef.current = null;
+        if (pendingPlayConfirmationRef.current === pendingId && operationIdRef.current === pendingId) {
+          clearPendingPlayConfirmation();
+          setIsLoading(false);
+          setLoadingUri(null);
+        }
+      }, PLAY_CONFIRMATION_GRACE_MS);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status]);
 
   const playResolvedSource = async (
     uri: string,
@@ -159,64 +250,11 @@ function useAudioChannel(
     setIsMuted(false);
     previousVolumeRef.current = 1.0;
     player.volume = 1.0;
-    setCurrentTime('00:00');
-
-    const effectiveDuration = getEffectiveDuration();
-    setTotalTime(effectiveDuration != null ? formatTime(effectiveDuration * 1000) : '--:--');
-    setRemainingTime(effectiveDuration != null ? formatTime(effectiveDuration * 1000) : '--:--');
-    setProgress(0);
     setCurrentUri(uri);
 
     await setIsAudioActiveAsync(true);
     await player.play();
-    setIsPlaying(true);
-    void syncDurationWhenAvailable(operationId);
   };
-
-  // Sync player state with React state
-  useEffect(() => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-    }
-
-    if (currentUri) {
-      intervalRef.current = setInterval(() => {
-        try {
-          setIsPlaying(player.playing);
-          const currentTimeMs = player.currentTime * 1000;
-          const effectiveDuration = getEffectiveDuration();
-          const durationValid = effectiveDuration != null;
-          const durationMs = durationValid ? effectiveDuration * 1000 : 0;
-          setCurrentTime(formatTime(currentTimeMs));
-          setTotalTime(durationValid ? formatTime(durationMs) : '--:--');
-          setRemainingTime(durationValid ? formatTime(Math.max(0, durationMs - currentTimeMs)) : '--:--');
-          setProgress(durationValid ? player.currentTime / effectiveDuration : 0);
-          if (isPlayerAtEnd(player) && !player.playing) {
-            setIsPlaying(false);
-            setProgress(1);
-          }
-        } catch (error) {
-          // Native player became unreadable (e.g. released). Log it instead
-          // of silently swallowing, since this previously left the UI frozen
-          // on stale time/progress with no diagnostic trail.
-          console.warn('AudioPlayerProvider: failed to read player state', error);
-        }
-      }, 250);
-    } else {
-      setIsPlaying(false);
-      setCurrentTime('00:00');
-      setTotalTime('--:--');
-      setRemainingTime('--:--');
-      setProgress(0);
-    }
-
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentUri]);
 
   const loadAudio = async (uri: string, knownDurationSec?: number) => {
     let operationId: number | null = null;
@@ -234,7 +272,6 @@ function useAudioChannel(
       operationId = ++operationIdRef.current;
       setIsLoading(true);
       setLoadingUri(uri);
-      setIsPlaying(false);
 
       // Always pause before loading new audio to prevent overlap
       player.pause();
@@ -250,23 +287,11 @@ function useAudioChannel(
       previousVolumeRef.current = 1.0;
       player.volume = 1.0;
 
-      setCurrentTime('00:00');
-      const effectiveDuration = getEffectiveDuration();
-      setTotalTime(effectiveDuration != null ? formatTime(effectiveDuration * 1000) : '--:--');
-      setRemainingTime(effectiveDuration != null ? formatTime(effectiveDuration * 1000) : '--:--');
-      setProgress(0);
-
       setCurrentUri(uri);
-      void syncDurationWhenAvailable(operationId);
     } catch (error) {
       if (operationId !== null && operationId !== operationIdRef.current) return;
       console.error('Error loading audio:', error);
       setCurrentUri(null);
-      setIsPlaying(false);
-      setCurrentTime('00:00');
-      setTotalTime('--:--');
-      setRemainingTime('--:--');
-      setProgress(0);
     } finally {
       if (operationId !== null && operationId === operationIdRef.current) {
         setIsLoading(false);
@@ -283,26 +308,26 @@ function useAudioChannel(
       }
 
       knownDurationRef.current = normalizeKnownDuration(knownDurationSec);
-      setIsLoading(true);
-      setLoadingUri(uri);
       onPlayStart();
 
-      // If same audio is already loaded, just play it
+      // If same audio is already loaded, just resume it. This is a pure
+      // native operation (no fetch, no decode) so it never shows the
+      // loading spinner.
       if (currentUri === uri) {
         if (!player.playing) {
           if (isPlayerAtEnd(player)) {
             await player.seekTo(0);
-            setCurrentTime('00:00');
-            setProgress(0);
+            if (operationId !== operationIdRef.current) return;
           }
           await setIsAudioActiveAsync(true);
+          if (operationId !== operationIdRef.current) return;
           await player.play();
-          setIsPlaying(true);
         }
         return;
       }
 
-      setIsPlaying(false);
+      setIsLoading(true);
+      setLoadingUri(uri);
 
       if (player.playing) {
         player.pause();
@@ -314,30 +339,36 @@ function useAudioChannel(
       await playResolvedSource(uri, playableUri, operationId);
       if (operationId !== operationIdRef.current) return;
 
-      setIsLoading(false);
-      setLoadingUri(null);
+      armPlayConfirmation(operationId);
 
-      // Playing a not-yet-cached remote track directly: warm the cache in the
-      // background (this is also what gives the file its correct extension
-      // via magic-byte sniffing, so a future play gets working duration/seek
-      // metadata) without blocking or interrupting the playback that already
-      // started.
       if (isRemoteUri(uri) && playableUri === uri) {
+        // Playing a not-yet-cached remote track directly: warm the cache in
+        // the background (this is also what gives the file its correct
+        // extension via magic-byte sniffing, so a future play gets working
+        // duration/seek metadata) without blocking or interrupting the
+        // playback that already started. warmAudio self-gates to unmetered
+        // connections, so on cellular this is a no-op and the streaming fetch
+        // keeps the whole pipe (crucial for the heaviest files on a weak link).
+        // Do NOT add a "verify the stream is healthy, else redownload and swap
+        // the source" step here — see
+        // .agents/memory/audio-playback-architecture.md for why that was
+        // already tried and reverted (it misdiagnoses a slow-but-healthy
+        // stream as stalled and interrupts it).
         audioCacheService.warmAudio(uri).catch((error) => {
           console.warn('Failed to warm streamed audio cache:', error);
         });
       }
     } catch (error) {
+      clearPendingPlayConfirmation();
       if (operationId !== operationIdRef.current) return;
       console.error('Error loading and playing audio:', error);
       setCurrentUri(null);
-      setIsPlaying(false);
-      setCurrentTime('00:00');
-      setTotalTime('--:--');
-      setRemainingTime('--:--');
-      setProgress(0);
     } finally {
-      if (operationId === operationIdRef.current) {
+      // Skip the clear when a confirmation was just armed for this exact
+      // operation — armPlayConfirmation/the status effect own clearing
+      // isLoading in that case. Still fires for early returns (empty uri)
+      // and thrown errors, which never reach armPlayConfirmation.
+      if (operationId === operationIdRef.current && pendingPlayConfirmationRef.current !== operationId) {
         setIsLoading(false);
         setLoadingUri(null);
       }
@@ -347,12 +378,12 @@ function useAudioChannel(
   const unloadAudio = async () => {
     operationIdRef.current++;
     knownDurationRef.current = null;
+    clearPendingPlayConfirmation();
     try {
       if (player.playing) {
         player.pause();
       }
 
-      setIsPlaying(false);
       setIsLoading(false);
       // Don't call replace(null) - it's not supported
       // Just clear our state and let the player keep the last audio loaded
@@ -361,21 +392,12 @@ function useAudioChannel(
       setLoadingUri(null);
       setIsMuted(false);
       previousVolumeRef.current = 1.0;
-      setCurrentTime('00:00');
-      setTotalTime('--:--');
-      setRemainingTime('--:--');
-      setProgress(0);
     } catch (error) {
       setCurrentUri(null);
       setLoadingUri(null);
-      setIsPlaying(false);
       setIsLoading(false);
       setIsMuted(false);
       previousVolumeRef.current = 1.0;
-      setCurrentTime('00:00');
-      setTotalTime('--:--');
-      setRemainingTime('--:--');
-      setProgress(0);
     }
   };
 
@@ -386,25 +408,21 @@ function useAudioChannel(
         return;
       }
 
+      // Resuming an already-loaded track is a pure native operation (no
+      // fetch, no decode) — never show the loading spinner for it.
       if (!player.playing) {
-        setIsLoading(true);
-        setLoadingUri(currentUri);
         if (isPlayerAtEnd(player)) {
           await player.seekTo(0);
           if (operationId !== operationIdRef.current) return;
-          setCurrentTime('00:00');
-          setProgress(0);
         }
         await setIsAudioActiveAsync(true);
         if (operationId !== operationIdRef.current) return;
         onPlayStart();
         await player.play();
         if (operationId !== operationIdRef.current) return;
-        setIsPlaying(true);
       }
     } catch (error) {
       if (operationId !== operationIdRef.current) return;
-      setIsPlaying(false);
     } finally {
       if (operationId === operationIdRef.current) {
         setIsLoading(false);
@@ -420,6 +438,7 @@ function useAudioChannel(
     // run once cancelled — so pause() must clear it here itself, same as
     // stop()/pauseFromCoordinator() already do, or the play button gets
     // stuck on its loading spinner after a fast pause during a play attempt.
+    clearPendingPlayConfirmation();
     setIsLoading(false);
     setLoadingUri(null);
     try {
@@ -429,7 +448,6 @@ function useAudioChannel(
 
       if (player.playing) {
         player.pause();
-        setIsPlaying(false);
       }
     } catch (error) {
     }
@@ -440,24 +458,23 @@ function useAudioChannel(
     try {
       player.pause();
     } catch {}
-    setIsPlaying(false);
+    clearPendingPlayConfirmation();
     setIsLoading(false);
     setLoadingUri(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [player]);
 
   const stop = async () => {
     operationIdRef.current++;
+    clearPendingPlayConfirmation();
     try {
       // Always try to pause, regardless of currentUri state
       player.pause();
-      setIsPlaying(false);
       setIsLoading(false);
       setLoadingUri(null);
 
       if (currentUri) {
         await player.seekTo(0);
-        setCurrentTime('00:00');
-        setProgress(0);
       }
     } catch (error) {
     }
@@ -469,9 +486,9 @@ function useAudioChannel(
         return;
       }
 
-      const effectiveDuration = getEffectiveDuration();
-      const newPosition = effectiveDuration != null
-        ? Math.min(player.currentTime + seconds, effectiveDuration)
+      const effectiveDurationSec = getEffectiveDuration();
+      const newPosition = effectiveDurationSec != null
+        ? Math.min(player.currentTime + seconds, effectiveDurationSec)
         : player.currentTime + seconds;
       await player.seekTo(newPosition);
     } catch (error) {
@@ -492,13 +509,13 @@ function useAudioChannel(
 
   const seekTo = async (progressValue: number) => {
     try {
-      const effectiveDuration = getEffectiveDuration();
-      if (!currentUri || effectiveDuration == null) {
+      const effectiveDurationSec = getEffectiveDuration();
+      if (!currentUri || effectiveDurationSec == null) {
         return;
       }
 
       const clampedProgress = Math.max(0, Math.min(1, progressValue));
-      const newPosition = clampedProgress * effectiveDuration;
+      const newPosition = clampedProgress * effectiveDurationSec;
       await player.seekTo(newPosition);
     } catch (error) {
     }
@@ -548,10 +565,10 @@ function useAudioChannel(
   const getPlaybackSnapshot = useCallback((): PlaybackSnapshot => {
     try {
       const pos = player.currentTime;
-      const effectiveDuration = getEffectiveDuration();
+      const effectiveDurationSec = getEffectiveDuration();
       return {
         positionSec: isFinite(pos) && pos >= 0 ? pos : 0,
-        durationSec: effectiveDuration ?? 0,
+        durationSec: effectiveDurationSec ?? 0,
         isPlaying: player.playing,
       };
     } catch {

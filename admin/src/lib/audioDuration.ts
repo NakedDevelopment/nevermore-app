@@ -44,29 +44,45 @@ export async function getAudioDurationsSec(files: File[]): Promise<(number | nul
  * already-uploaded file's URL instead of a local `File` — used to backfill
  * duration metadata for audio that was uploaded before duration tracking
  * existed, without re-uploading anything.
+ *
+ * Rejects (rather than resolving null) when the duration can't be determined,
+ * so callers can tell "genuinely no duration" apart from "the browser
+ * couldn't decode this / the request failed" — the backfill needs that
+ * distinction to avoid miscounting CORS/codec failures as successes.
  */
-export function getAudioDurationFromUrl(url: string): Promise<number | null> {
-  return new Promise((resolve) => {
+export function getAudioDurationFromUrl(url: string): Promise<number> {
+  return new Promise((resolve, reject) => {
     const audio = new Audio();
     let settled = false;
 
-    const finish = (value: number | null) => {
+    const finishOk = (value: number) => {
       if (settled) return;
       settled = true;
       resolve(value);
     };
 
-    const timeoutId = setTimeout(() => finish(null), 15000);
+    const finishError = (reason: string) => {
+      if (settled) return;
+      settled = true;
+      reject(new Error(reason));
+    };
+
+    const timeoutId = setTimeout(() => finishError('timed out waiting for metadata'), 15000);
 
     audio.addEventListener('loadedmetadata', () => {
       clearTimeout(timeoutId);
       const duration = audio.duration;
-      finish(Number.isFinite(duration) && duration > 0 ? duration : null);
+      if (Number.isFinite(duration) && duration > 0) {
+        finishOk(duration);
+      } else {
+        finishError(`decoded but duration was ${duration}`);
+      }
     });
 
     audio.addEventListener('error', () => {
       clearTimeout(timeoutId);
-      finish(null);
+      const mediaError = audio.error;
+      finishError(mediaError ? `media error code ${mediaError.code}` : 'unknown media error');
     });
 
     audio.preload = 'metadata';

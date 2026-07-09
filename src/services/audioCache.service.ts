@@ -1,4 +1,5 @@
 import * as FileSystem from 'expo-file-system';
+import * as Network from 'expo-network';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const AUDIO_CACHE_DIR = `${FileSystem.cacheDirectory}audio/`;
@@ -305,6 +306,31 @@ class AudioCacheService {
     return remoteUrl;
   }
 
+  /**
+   * Whether a *background* full-file download is allowed on the current
+   * connection. Background warming pulls the entire file, and on metered
+   * cellular it competes for bandwidth with the native player's own streaming
+   * fetch when the user taps play on an audio that isn't fully cached yet —
+   * starving the actual playback stream (worst for the heaviest files, e.g.
+   * "Internal Thoughts"). It also burns cellular data the client asked us to
+   * conserve. So warming only runs on unmetered links (WiFi/Ethernet); on
+   * cellular the file simply streams on tap (getting the whole pipe) and is
+   * warmed later once the user is on WiFi.
+   *
+   * Fails OPEN (returns true) if the network type can't be determined, so a
+   * transient probe failure never permanently disables caching.
+   */
+  private async isBackgroundDownloadAllowed(): Promise<boolean> {
+    try {
+      const state = await Network.getNetworkStateAsync();
+      if (state.isConnected === false) return false;
+      if (state.type === Network.NetworkStateType.CELLULAR) return false;
+      return true;
+    } catch {
+      return true;
+    }
+  }
+
   async warmAudio(remoteUrl: string): Promise<void> {
     await this.init();
 
@@ -328,6 +354,12 @@ class AudioCacheService {
       } catch {
         // File disappeared; redownload below.
       }
+    }
+
+    // Only warm on unmetered connections — see isBackgroundDownloadAllowed.
+    // Already-cached files returned above are served regardless of connection.
+    if (!(await this.isBackgroundDownloadAllowed())) {
+      return;
     }
 
     await this.downloadAndCache(remoteUrl, hash);

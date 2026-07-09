@@ -174,27 +174,6 @@ class UserProfileService {
       throw new Error(error.message || 'Failed to delete user profile');
     }
   }
-
-  async isNicknameAvailable(nickname: string): Promise<boolean> {
-    try {
-      this.validateConfig();
-
-      if (!nickname.trim()) {
-        return false;
-      }
-
-      const response = await tablesDB.listRows({
-        databaseId: APPWRITE_DATABASE_ID,
-        tableId: APPWRITE_USER_PROFILES_COLLECTION_ID,
-        queries: [Query.equal('nickname', nickname)],
-      });
-
-      return response.rows.length === 0;
-    } catch (error: any) {
-      console.error('Check nickname availability error:', error);
-      throw new Error(error.message || 'Failed to check nickname availability');
-    }
-  }
 }
 
 export const userProfileService = new UserProfileService();

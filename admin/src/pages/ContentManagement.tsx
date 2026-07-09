@@ -10,7 +10,7 @@ import { Button } from '../components/Button';
 import { fetchContent, type ContentDocument } from '../lib/content';
 import { backfillAudioDurations, type BackfillProgress } from '../lib/backfillDurations';
 import { getCategoryName, type Category } from '../lib/categories';
-import { showAppwriteError, showSuccess } from '../lib/notifications';
+import { showAppwriteError, showSuccess, showWarning } from '../lib/notifications';
 import { useCategoriesStore } from '../store/categoriesStore';
 
 interface ContentItem extends Record<string, unknown> {
@@ -238,12 +238,16 @@ export const ContentManagement = () => {
       const result = await backfillAudioDurations((progress) => {
         setBackfillProgress(progress);
       });
-      showSuccess(
-        `Backfilled durations for ${result.updated} of ${result.scanned} content item(s)` +
-          (result.failed > 0 ? ` (${result.failed} failed)` : '')
-      );
       // Existing audio doesn't need to be re-uploaded — durations were read
       // straight from the already-stored files.
+      if (result.failures.length > 0) {
+        console.warn('Backfill audio durations — per-file failures:', result.failures);
+        showWarning(
+          `Backfilled ${result.updated} of ${result.scanned} content item(s), but ${result.failures.length} file(s) could not be read (see console) — they'll be retried on the next run.`
+        );
+      } else {
+        showSuccess(`Backfilled durations for ${result.updated} of ${result.scanned} content item(s)`);
+      }
     } catch (error) {
       console.error('Error backfilling audio durations:', error);
       showAppwriteError(error);

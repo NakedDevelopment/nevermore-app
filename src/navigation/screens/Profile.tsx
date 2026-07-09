@@ -72,7 +72,7 @@ type EditFieldType =
 export const Profile: React.FC = () => {
   const navigation = useNavigation();
   const { user, deleteAccount } = useAuthStore();
-  const { profile, isLoading, updateProfile, checkNicknameAvailability } = useUserProfile();
+  const { profile, isLoading, updateProfile } = useUserProfile();
   
   const [editingField, setEditingField] = useState<EditFieldType>(null);
   const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
@@ -148,10 +148,6 @@ export const Profile: React.FC = () => {
     }
     if (value.length < 3) {
       return { valid: false, message: 'Nickname must be at least 3 characters' };
-    }
-    const isAvailable = await checkNicknameAvailability(value);
-    if (!isAvailable) {
-      return { valid: false, message: 'This nickname is already taken' };
     }
     return { valid: true };
   };

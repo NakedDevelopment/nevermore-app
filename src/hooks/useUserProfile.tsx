@@ -45,20 +45,6 @@ export const useUserProfile = () => {
     }
   };
 
-  // Check nickname availability
-  const checkNicknameAvailability = async (nickname: string): Promise<boolean> => {
-    try {
-      // Don't check if it's the same as current nickname
-      if (nickname === profile?.nickname) {
-        return true;
-      }
-      return await userProfileService.isNicknameAvailable(nickname);
-    } catch (error: any) {
-      console.error('Error checking nickname:', error);
-      return false;
-    }
-  };
-
   // Fetch profile on mount or when user changes
   useEffect(() => {
     fetchProfile();
@@ -69,7 +55,6 @@ export const useUserProfile = () => {
     isLoading,
     isUpdating,
     updateProfile,
-    checkNicknameAvailability,
     refetchProfile: fetchProfile,
   };
 };

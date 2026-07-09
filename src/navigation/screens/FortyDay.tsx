@@ -170,25 +170,25 @@ export const FortyDay = () => {
         }
       });
     });
+  }, [activeIndex, days]);
 
-    const nextDayAudioUrl = days[activeIndex + 1]?.audioUrl;
-    const currentDayAudioUrl = days[activeIndex]?.audioUrl;
-    const audioUrlsToWarm = [currentDayAudioUrl, nextDayAudioUrl].filter(
-      (audioUrl): audioUrl is string => !!audioUrl
-    );
-
-    if (audioUrlsToWarm.length === 0) {
+  // Background audio downloading is intentionally limited to Day 1 only (the
+  // very first thing a new user hits after onboarding) — everything else
+  // streams on tap and caches afterward for next time via loadAndPlay's own
+  // warmAudio call. This is a deliberate data-usage/bandwidth-contention
+  // tradeoff, not an oversight: see .agents/memory/audio-playback-architecture.md.
+  useEffect(() => {
+    const day1AudioUrl = days.find((day) => day.day === 1)?.audioUrl;
+    if (!day1AudioUrl) {
       return;
     }
 
     const warmTimer = setTimeout(() => {
-      audioUrlsToWarm.forEach((audioUrl) => {
-        audioCacheService.warmAudio(audioUrl).catch(() => {});
-      });
+      audioCacheService.warmAudio(day1AudioUrl).catch(() => {});
     }, 1200);
 
     return () => clearTimeout(warmTimer);
-  }, [activeIndex, days]);
+  }, [days]);
 
   useEffect(() => {
     if (days.length === 0) {
