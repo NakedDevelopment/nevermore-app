@@ -4,7 +4,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { Canvas, Image as SkiaImage, useImage } from '@shopify/react-native-skia';
 import { Button } from '../../components/Button';
-import { SecondaryButton } from '../../components/SecondaryButton';
 import { ScreenNames } from '../../constants/ScreenNames';
 import { useOnboardingStore } from '../../store/onboardingStore';
 import { useTrialStore } from '../../store/trialStore';
@@ -65,15 +64,7 @@ export function TrialWelcome() {
     );
   }
 
-  const handleStartSubscription = () => {
-    completeOnboarding();
-    navigation.reset({
-      index: 0,
-      routes: [{ name: ScreenNames.SUBSCRIPTION }],
-    });
-  };
-
-  const handleSkip = () => {
+  const handleStartTrial = () => {
     completeOnboarding();
     navigation.reset({
       index: 0,
@@ -103,14 +94,7 @@ export function TrialWelcome() {
         </View>
 
         <View style={styles.buttonContainer}>
-          <Button title="Start my 3 free days" onPress={handleStartSubscription} variant="primary" size="medium" />
-          <SecondaryButton
-            title="Not now"
-            onPress={handleSkip}
-            size="medium"
-            style={styles.skipButton}
-            textStyle={styles.skipButtonText}
-          />
+          <Button title="Start my 3 free days" onPress={handleStartTrial} variant="primary" size="medium" />
         </View>
       </SafeAreaView>
     </View>
@@ -172,11 +156,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingBottom: 20,
     gap: 12,
-  },
-  skipButton: {
-    alignItems: 'center',
-  },
-  skipButtonText: {
-    color: '#8B5CF6',
   },
 });
