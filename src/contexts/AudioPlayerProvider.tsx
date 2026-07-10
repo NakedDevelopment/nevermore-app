@@ -1,4 +1,4 @@
-import { useAudioPlayer as useExpoAudioPlayer, useAudioPlayerStatus, AudioPlayer, AudioSource, setAudioModeAsync, setIsAudioActiveAsync } from 'expo-audio';
+import { useAudioPlayerStatus, createAudioPlayer, AudioPlayer, AudioSource, setAudioModeAsync, setIsAudioActiveAsync } from 'expo-audio';
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import { audioCacheService } from '../services/audioCache.service';
@@ -88,6 +88,13 @@ const isRemoteUri = (uri: string): boolean => /^https?:\/\//i.test(uri);
 const normalizeKnownDuration = (value?: number): number | null =>
   typeof value === 'number' && isFinite(value) && value > 0 ? value : null;
 
+// Options for every player instance. keepAudioSessionActive:true stops
+// expo-audio from deactivating the shared AVAudioSession on pause() — that
+// delayed setActive(false) is what killed a large file mid-buffer on cellular
+// (see .agents/memory/audio-playback-architecture.md). Each track gets its own
+// fresh player built with these options.
+const PLAYER_OPTIONS = { keepAudioSessionActive: true };
+
 const configureBackgroundAudioSession = async () => {
   await setAudioModeAsync({
     playsInSilentMode: true,
@@ -116,9 +123,17 @@ const configureBackgroundAudioSession = async () => {
  * truth there's nothing left to race.
  */
 function useAudioChannel(
-  player: AudioPlayer,
   onPlayStart: () => void
 ): InternalAudioChannel {
+  // Fresh player per track — NOT one reused player + replace(). A long-lived
+  // AVPlayer that has had several items swapped into it via replace() gets
+  // stuck in `.waitingToPlayAtSpecifiedRate` on cellular for large files,
+  // worst on a return visit; a brand-new player has no accumulated state and
+  // starts cleanly. The player lives in state so `useAudioPlayerStatus`
+  // re-subscribes whenever we swap it; `playerRef` mirrors it for imperative
+  // calls (which may run right after a swap, before the re-render).
+  const [player, setPlayer] = useState<AudioPlayer>(() => createAudioPlayer(null, PLAYER_OPTIONS));
+  const playerRef = useRef<AudioPlayer>(player);
   const status = useAudioPlayerStatus(player);
   const [isLoading, setIsLoading] = useState(false);
   const [loadingUri, setLoadingUri] = useState<string | null>(null);
@@ -142,8 +157,40 @@ function useAudioChannel(
   const pendingPlayConfirmationRef = useRef<number | null>(null);
   const playConfirmationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Dispose the previous player after a swap. `createAudioPlayer` instances are
+  // NOT auto-released (unlike the useAudioPlayer hook), so we must remove() the
+  // old one or leak native resources. Runs as a post-render effect, so
+  // `useAudioPlayerStatus` has already moved its subscription to the new player
+  // before the old one is torn down.
+  const prevPlayerRef = useRef<AudioPlayer>(player);
+  useEffect(() => {
+    const prev = prevPlayerRef.current;
+    if (prev !== player) {
+      try { prev.remove(); } catch {}
+      prevPlayerRef.current = player;
+    }
+  }, [player]);
+
+  // Best-effort release of the last player on teardown (app exit).
+  useEffect(() => {
+    return () => { try { playerRef.current?.remove(); } catch {} };
+  }, []);
+
+  // Build a brand-new player for `resolvedUri`, make it the current player, and
+  // return it. Sets `playerRef` synchronously so the imperative caller can act
+  // on the new player immediately; `setPlayer` triggers the re-render that
+  // re-subscribes status and disposes the old player (effect above).
+  const swapToFreshPlayer = (resolvedUri: string): AudioPlayer => {
+    const source: AudioSource = { uri: resolvedUri };
+    const next = createAudioPlayer(source, PLAYER_OPTIONS);
+    playerRef.current = next;
+    setPlayer(next);
+    return next;
+  };
+
   const getEffectiveDuration = (): number | null => {
-    if (isFinite(player.duration) && player.duration > 0) return player.duration;
+    const p = playerRef.current;
+    if (isFinite(p.duration) && p.duration > 0) return p.duration;
     return knownDurationRef.current;
   };
 
@@ -243,17 +290,18 @@ function useAudioChannel(
     resolvedUri: string,
     operationId: number
   ): Promise<void> => {
-    const audioSource: AudioSource = { uri: resolvedUri };
-    await player.replace(audioSource);
+    // Fresh player for this track — never reuse/replace the previous one.
+    const p = swapToFreshPlayer(resolvedUri);
     if (operationId !== operationIdRef.current) return;
 
     setIsMuted(false);
     previousVolumeRef.current = 1.0;
-    player.volume = 1.0;
+    p.volume = 1.0;
     setCurrentUri(uri);
 
     await setIsAudioActiveAsync(true);
-    await player.play();
+    if (operationId !== operationIdRef.current) return;
+    p.play();
   };
 
   const loadAudio = async (uri: string, knownDurationSec?: number) => {
@@ -273,19 +321,19 @@ function useAudioChannel(
       setIsLoading(true);
       setLoadingUri(uri);
 
-      // Always pause before loading new audio to prevent overlap
-      player.pause();
+      // Pause the outgoing player before swapping in the new one.
+      try { playerRef.current.pause(); } catch {}
 
       const cachedUri = await audioCacheService.getAudioUri(uri);
       if (operationId !== operationIdRef.current) return;
 
-      const audioSource: AudioSource = { uri: cachedUri };
-      await player.replace(audioSource);
+      // Fresh player for the preloaded track (no play() — this is a preload).
+      const p = swapToFreshPlayer(cachedUri);
       if (operationId !== operationIdRef.current) return;
 
       setIsMuted(false);
       previousVolumeRef.current = 1.0;
-      player.volume = 1.0;
+      p.volume = 1.0;
 
       setCurrentUri(uri);
     } catch (error) {
@@ -314,14 +362,15 @@ function useAudioChannel(
       // native operation (no fetch, no decode) so it never shows the
       // loading spinner.
       if (currentUri === uri) {
-        if (!player.playing) {
-          if (isPlayerAtEnd(player)) {
-            await player.seekTo(0);
+        const p = playerRef.current;
+        if (!p.playing) {
+          if (isPlayerAtEnd(p)) {
+            await p.seekTo(0);
             if (operationId !== operationIdRef.current) return;
           }
           await setIsAudioActiveAsync(true);
           if (operationId !== operationIdRef.current) return;
-          await player.play();
+          p.play();
         }
         return;
       }
@@ -329,9 +378,7 @@ function useAudioChannel(
       setIsLoading(true);
       setLoadingUri(uri);
 
-      if (player.playing) {
-        player.pause();
-      }
+      try { playerRef.current.pause(); } catch {}
 
       const playableUri = await audioCacheService.getPlayableUri(uri);
       if (operationId !== operationIdRef.current) return;
@@ -380,13 +427,12 @@ function useAudioChannel(
     knownDurationRef.current = null;
     clearPendingPlayConfirmation();
     try {
-      if (player.playing) {
-        player.pause();
+      if (playerRef.current.playing) {
+        playerRef.current.pause();
       }
 
       setIsLoading(false);
-      // Don't call replace(null) - it's not supported
-      // Just clear our state and let the player keep the last audio loaded
+      // Leave the current player loaded; state cleared below.
 
       setCurrentUri(null);
       setLoadingUri(null);
@@ -410,15 +456,16 @@ function useAudioChannel(
 
       // Resuming an already-loaded track is a pure native operation (no
       // fetch, no decode) — never show the loading spinner for it.
-      if (!player.playing) {
-        if (isPlayerAtEnd(player)) {
-          await player.seekTo(0);
+      const p = playerRef.current;
+      if (!p.playing) {
+        if (isPlayerAtEnd(p)) {
+          await p.seekTo(0);
           if (operationId !== operationIdRef.current) return;
         }
         await setIsAudioActiveAsync(true);
         if (operationId !== operationIdRef.current) return;
         onPlayStart();
-        await player.play();
+        p.play();
         if (operationId !== operationIdRef.current) return;
       }
     } catch (error) {
@@ -446,8 +493,8 @@ function useAudioChannel(
         return;
       }
 
-      if (player.playing) {
-        player.pause();
+      if (playerRef.current.playing) {
+        playerRef.current.pause();
       }
     } catch (error) {
     }
@@ -456,25 +503,25 @@ function useAudioChannel(
   const pauseFromCoordinator = useCallback(() => {
     operationIdRef.current++;
     try {
-      player.pause();
+      playerRef.current.pause();
     } catch {}
     clearPendingPlayConfirmation();
     setIsLoading(false);
     setLoadingUri(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [player]);
+  }, []);
 
   const stop = async () => {
     operationIdRef.current++;
     clearPendingPlayConfirmation();
     try {
       // Always try to pause, regardless of currentUri state
-      player.pause();
+      playerRef.current.pause();
       setIsLoading(false);
       setLoadingUri(null);
 
       if (currentUri) {
-        await player.seekTo(0);
+        await playerRef.current.seekTo(0);
       }
     } catch (error) {
     }
@@ -486,11 +533,12 @@ function useAudioChannel(
         return;
       }
 
+      const p = playerRef.current;
       const effectiveDurationSec = getEffectiveDuration();
       const newPosition = effectiveDurationSec != null
-        ? Math.min(player.currentTime + seconds, effectiveDurationSec)
-        : player.currentTime + seconds;
-      await player.seekTo(newPosition);
+        ? Math.min(p.currentTime + seconds, effectiveDurationSec)
+        : p.currentTime + seconds;
+      await p.seekTo(newPosition);
     } catch (error) {
     }
   };
@@ -501,8 +549,9 @@ function useAudioChannel(
         return;
       }
 
-      const newPosition = Math.max(player.currentTime - seconds, 0);
-      await player.seekTo(newPosition);
+      const p = playerRef.current;
+      const newPosition = Math.max(p.currentTime - seconds, 0);
+      await p.seekTo(newPosition);
     } catch (error) {
     }
   };
@@ -516,7 +565,7 @@ function useAudioChannel(
 
       const clampedProgress = Math.max(0, Math.min(1, progressValue));
       const newPosition = clampedProgress * effectiveDurationSec;
-      await player.seekTo(newPosition);
+      await playerRef.current.seekTo(newPosition);
     } catch (error) {
     }
   };
@@ -551,11 +600,11 @@ function useAudioChannel(
       }
 
       if (isMuted) {
-        player.volume = previousVolumeRef.current;
+        playerRef.current.volume = previousVolumeRef.current;
         setIsMuted(false);
       } else {
-        previousVolumeRef.current = player.volume;
-        player.volume = 0;
+        previousVolumeRef.current = playerRef.current.volume;
+        playerRef.current.volume = 0;
         setIsMuted(true);
       }
     } catch (error) {
@@ -564,18 +613,19 @@ function useAudioChannel(
 
   const getPlaybackSnapshot = useCallback((): PlaybackSnapshot => {
     try {
-      const pos = player.currentTime;
+      const p = playerRef.current;
+      const pos = p.currentTime;
       const effectiveDurationSec = getEffectiveDuration();
       return {
         positionSec: isFinite(pos) && pos >= 0 ? pos : 0,
         durationSec: effectiveDurationSec ?? 0,
-        isPlaying: player.playing,
+        isPlaying: p.playing,
       };
     } catch {
       return { positionSec: 0, durationSec: 0, isPlaying: false };
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [player]);
+  }, []);
 
   return {
     isPlaying,
@@ -606,11 +656,9 @@ function useAudioChannel(
 }
 
 export function AudioPlayerProvider({ children }: { children: React.ReactNode }) {
-  // One persistent native player per logical channel. These live for the
-  // lifetime of the app, so audio keeps playing as the user navigates.
-  const mainPlayer = useExpoAudioPlayer();
-  const reflectionPlayer = useExpoAudioPlayer();
-  const fortydayPlayer = useExpoAudioPlayer();
+  // Each channel owns its player internally (a fresh instance per track — see
+  // useAudioChannel). The channels themselves live for the lifetime of the app
+  // (provider mounted above navigation), so playback survives screen changes.
   const channelsRef = useRef<Partial<Record<ChannelName, InternalAudioChannel>>>({});
 
   // Configure the audio session once so playback continues when the app is
@@ -643,9 +691,9 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
     if (keep !== 'fortyday') channelsRef.current.fortyday?.pauseFromCoordinator();
   }, []);
 
-  const main = useAudioChannel(mainPlayer, useCallback(() => pauseOthers('main'), [pauseOthers]));
-  const reflection = useAudioChannel(reflectionPlayer, useCallback(() => pauseOthers('reflection'), [pauseOthers]));
-  const fortyday = useAudioChannel(fortydayPlayer, useCallback(() => pauseOthers('fortyday'), [pauseOthers]));
+  const main = useAudioChannel(useCallback(() => pauseOthers('main'), [pauseOthers]));
+  const reflection = useAudioChannel(useCallback(() => pauseOthers('reflection'), [pauseOthers]));
+  const fortyday = useAudioChannel(useCallback(() => pauseOthers('fortyday'), [pauseOthers]));
   channelsRef.current = { main, reflection, fortyday };
 
   useEffect(() => {
