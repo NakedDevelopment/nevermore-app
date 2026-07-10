@@ -134,6 +134,11 @@ function useAudioChannel(
   // calls (which may run right after a swap, before the re-render).
   const [player, setPlayer] = useState<AudioPlayer>(() => createAudioPlayer(null, PLAYER_OPTIONS));
   const playerRef = useRef<AudioPlayer>(player);
+  // The actual URI handed to the current player (a local file:// path for a
+  // cached track, or the remote http(s) URL when streaming). Lets the
+  // same-track "second play" branch tell a cheap local resume from a streamed
+  // one that needs a fresh player — see loadAndPlay.
+  const resolvedSourceUriRef = useRef<string | null>(null);
   const status = useAudioPlayerStatus(player);
   const [isLoading, setIsLoading] = useState(false);
   const [loadingUri, setLoadingUri] = useState<string | null>(null);
@@ -184,6 +189,7 @@ function useAudioChannel(
     const source: AudioSource = { uri: resolvedUri };
     const next = createAudioPlayer(source, PLAYER_OPTIONS);
     playerRef.current = next;
+    resolvedSourceUriRef.current = resolvedUri;
     setPlayer(next);
     return next;
   };
@@ -358,12 +364,17 @@ function useAudioChannel(
       knownDurationRef.current = normalizeKnownDuration(knownDurationSec);
       onPlayStart();
 
-      // If same audio is already loaded, just resume it. This is a pure
-      // native operation (no fetch, no decode) so it never shows the
-      // loading spinner.
+      // Same audio already loaded — this is a "second play" (resume after a
+      // pause, or replay after it finished).
       if (currentUri === uri) {
         const p = playerRef.current;
-        if (!p.playing) {
+        if (p.playing) return;
+
+        // A locally-cached track resumes in place: reusing its player is a
+        // pure native operation (no fetch, no decode), instant and reliable,
+        // so it never shows the loading spinner.
+        const sourceIsRemoteStream = isRemoteUri(resolvedSourceUriRef.current ?? '');
+        if (!sourceIsRemoteStream) {
           if (isPlayerAtEnd(p)) {
             await p.seekTo(0);
             if (operationId !== operationIdRef.current) return;
@@ -371,7 +382,40 @@ function useAudioChannel(
           await setIsAudioActiveAsync(true);
           if (operationId !== operationIdRef.current) return;
           p.play();
+          return;
         }
+
+        // Streamed track (e.g. the heavy files on cellular, which never cache
+        // — warmAudio is WiFi-only): do NOT reuse this player. An AVPlayer that
+        // has already streamed a large remote file accumulates state and gets
+        // stuck in `.waitingToPlayAtSpecifiedRate` when replayed/resumed on
+        // cellular — the exact reused-player stall the per-track fresh-player
+        // fix removed, which also applies to a *second play of the same*
+        // streamed track. Rebuild a fresh player (re-resolving in case it has
+        // since cached), preserving position for a mid-stream resume.
+        const resumePositionSec = isPlayerAtEnd(p) ? 0 : Math.max(0, p.currentTime);
+        setIsLoading(true);
+        setLoadingUri(uri);
+        try { p.pause(); } catch {}
+
+        const playableUri = await audioCacheService.getPlayableUri(uri);
+        if (operationId !== operationIdRef.current) return;
+
+        const fresh = swapToFreshPlayer(playableUri);
+        if (operationId !== operationIdRef.current) return;
+
+        setIsMuted(false);
+        previousVolumeRef.current = 1.0;
+        fresh.volume = 1.0;
+
+        await setIsAudioActiveAsync(true);
+        if (operationId !== operationIdRef.current) return;
+        if (resumePositionSec > 0) {
+          try { await fresh.seekTo(resumePositionSec); } catch {}
+          if (operationId !== operationIdRef.current) return;
+        }
+        fresh.play();
+        armPlayConfirmation(operationId);
         return;
       }
 

@@ -12,6 +12,32 @@ Channels live above navigation so playback survives screen transitions. A global
 the others, so cross-channel exclusivity is handled centrally — screens should not need
 to manually coordinate it.
 
+## Fresh player per track — including a second play of the *same* streamed track
+
+Each channel does NOT keep one long-lived `AudioPlayer` and swap tracks into it via
+`replace()`. A reused iOS `AVPlayer` that has had a large remote file streamed through it
+accumulates state and gets stuck in `.waitingToPlayAtSpecifiedRate` on cellular — worst on
+a return visit — while a brand-new player always starts cleanly (confirmed against
+expo-audio's iOS source + Apple docs). So `useAudioChannel` builds a fresh player
+(`createAudioPlayer`) per track: it lives in state so `useAudioPlayerStatus` re-subscribes on
+swap, `playerRef` mirrors it for imperative calls, and the previous player is `remove()`d in a
+post-render effect (createAudioPlayer instances are not auto-released). Keeps
+`keepAudioSessionActive: true`. Do NOT reintroduce the imperative `player.playing` poll — it
+caused a "paused while playing" desync; spinner and icon both derive from the one
+`useAudioPlayerStatus.status`.
+
+**The same fresh-player rule applies to a *second play of the same track*, not just track
+switches (July 2026).** The original fresh-player fix only rebuilt when `currentUri !== uri`.
+But on cellular the heavy files never cache (`warmAudio` is WiFi-only), so they always stream,
+and playing the same one twice (replay after it finished, or resume after a pause) hit
+`loadAndPlay`'s `currentUri === uri` branch, which reused the first play's player via
+`p.play()` — the exact stale-AVPlayer stall, just via the resume path. Fix: that branch now
+checks `resolvedSourceUriRef` (the URI actually handed to the current player — `file://` when
+cached, `http(s)` when streaming). A **local** cached track still resumes in place (pure native,
+no spinner). A **streamed** track rebuilds a fresh player (re-resolving via `getPlayableUri` in
+case it has since cached), preserves position for a mid-stream resume via `seekTo`, and arms the
+normal play-confirmation spinner. Do NOT revert this branch to an unconditional `p.play()` reuse.
+
 ## Convention: primary single-track play handlers
 
 Every screen's play/pause button for a primary single audio track (e.g. FortyDay challenge,
