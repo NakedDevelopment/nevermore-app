@@ -19,6 +19,12 @@ type MediaControlsProps = {
   onForward: () => void;
   onStop: () => void;
   onSeek?: (progress: number) => void;
+  /** True when the stream has been buffering too long — show the download offer. */
+  isSlowConnection?: boolean;
+  /** 0-1 while a user-initiated download runs, or null/undefined when idle. */
+  downloadProgress?: number | null;
+  /** Tapped from the slow-connection prompt to download + play locally. */
+  onDownload?: () => void;
 };
 
 export const MediaControls: React.FC<MediaControlsProps> = ({
@@ -32,7 +38,12 @@ export const MediaControls: React.FC<MediaControlsProps> = ({
   onForward,
   onStop,
   onSeek,
+  isSlowConnection = false,
+  downloadProgress = null,
+  onDownload,
 }) => {
+  const isDownloading = downloadProgress != null;
+  const downloadPct = isDownloading ? Math.round((downloadProgress ?? 0) * 100) : 0;
   const progressWidth = Math.min(Math.max(progress * 100, 0), 100);
   
   // Store width from layout
@@ -135,6 +146,22 @@ export const MediaControls: React.FC<MediaControlsProps> = ({
           <Text style={styles.timeText}>{totalTime}</Text>
         </View>
       </View>
+
+      {isDownloading ? (
+        <View style={styles.downloadNotice}>
+          <ActivityIndicator size="small" color="#8B5CF6" />
+          <Text style={styles.downloadNoticeText}>Downloading… {downloadPct}%</Text>
+        </View>
+      ) : isSlowConnection && onDownload ? (
+        <View style={styles.slowNotice}>
+          <Text style={styles.slowNoticeText}>
+            Slow connection — this audio is taking a while to start.
+          </Text>
+          <TouchableOpacity style={styles.downloadButton} onPress={onDownload}>
+            <Text style={styles.downloadButtonText}>Download to play</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
     </View>
   );
 };
@@ -193,6 +220,48 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 12,
     fontFamily: 'Roboto_400Regular',
+  },
+  slowNotice: {
+    marginTop: 14,
+    paddingTop: 14,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#333333',
+    alignItems: 'center',
+  },
+  slowNoticeText: {
+    color: '#B0B0B0',
+    fontSize: 13,
+    fontFamily: 'Roboto_400Regular',
+    textAlign: 'center',
+    marginBottom: 10,
+  },
+  downloadButton: {
+    backgroundColor: '#8B5CF6',
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    alignSelf: 'stretch',
+    alignItems: 'center',
+  },
+  downloadButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontFamily: 'Roboto_500Medium',
+  },
+  downloadNotice: {
+    marginTop: 14,
+    paddingTop: 14,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#333333',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  downloadNoticeText: {
+    color: '#B0B0B0',
+    fontSize: 13,
+    fontFamily: 'Roboto_400Regular',
+    marginLeft: 10,
   },
 });
 

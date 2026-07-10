@@ -331,6 +331,47 @@ class AudioCacheService {
     }
   }
 
+  /**
+   * User-initiated foreground download of the full file into the cache, with
+   * progress. UNLIKE `warmAudio`, this deliberately does NOT self-gate to
+   * WiFi — it runs on cellular too, because the user explicitly asked to
+   * download this track (e.g. after the "slow connection" prompt). Returns the
+   * local file URI on success, or the remote URL as a streaming fallback if the
+   * download fails. Already-cached files return immediately (progress 1).
+   */
+  async downloadForPlayback(
+    remoteUrl: string,
+    onProgress?: (fraction: number) => void
+  ): Promise<string> {
+    await this.init();
+
+    if (!remoteUrl || remoteUrl.trim() === '') {
+      return remoteUrl;
+    }
+
+    if (remoteUrl.startsWith('file://') || remoteUrl.startsWith(FileSystem.documentDirectory || '') || remoteUrl.startsWith(FileSystem.cacheDirectory || '')) {
+      onProgress?.(1);
+      return remoteUrl;
+    }
+
+    const hash = this.hashUrl(remoteUrl);
+    const cachedEntry = this.cacheIndex[hash];
+
+    if (cachedEntry) {
+      try {
+        const fileInfo = await FileSystem.getInfoAsync(cachedEntry.localPath);
+        if (fileInfo.exists) {
+          onProgress?.(1);
+          return cachedEntry.localPath;
+        }
+      } catch {
+        // File disappeared; redownload below.
+      }
+    }
+
+    return this.downloadAndCache(remoteUrl, hash, onProgress);
+  }
+
   async warmAudio(remoteUrl: string): Promise<void> {
     await this.init();
 
@@ -368,7 +409,11 @@ class AudioCacheService {
   /**
    * Download audio file and cache it locally
    */
-  private async downloadAndCache(remoteUrl: string, hash: string): Promise<string> {
+  private async downloadAndCache(
+    remoteUrl: string,
+    hash: string,
+    onProgress?: (fraction: number) => void
+  ): Promise<string> {
     if (this.downloadPromises[hash]) {
       return this.downloadPromises[hash];
     }
@@ -379,10 +424,23 @@ class AudioCacheService {
     this.downloadPromises[hash] = (async () => {
       console.log('Downloading audio to cache:', remoteUrl);
 
-      const downloadResult = await FileSystem.downloadAsync(remoteUrl, localPath);
+      // createDownloadResumable (not downloadAsync) so we can report progress
+      // to a user-facing "Downloading X%" indicator. The callback is a no-op
+      // when onProgress is omitted (background warm / getAudioUri paths).
+      const resumable = FileSystem.createDownloadResumable(
+        remoteUrl,
+        localPath,
+        {},
+        (p) => {
+          if (onProgress && p.totalBytesExpectedToWrite > 0) {
+            onProgress(Math.min(1, p.totalBytesWritten / p.totalBytesExpectedToWrite));
+          }
+        }
+      );
+      const downloadResult = await resumable.downloadAsync();
 
-      if (downloadResult.status !== 200) {
-        console.warn('Audio download failed with status:', downloadResult.status);
+      if (!downloadResult || downloadResult.status !== 200) {
+        console.warn('Audio download failed with status:', downloadResult?.status);
         return remoteUrl; // Fall back to streaming
       }
 

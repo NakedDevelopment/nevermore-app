@@ -361,6 +361,9 @@ export default function TemptationDetails() {
             onForward={handleMainForward}
             onStop={handleMainStop}
             onSeek={handleMainSeek}
+            isSlowConnection={isActiveMainTrack && mainContentAudioPlayer.isSlowConnection}
+            downloadProgress={isActiveMainTrack ? mainContentAudioPlayer.downloadProgress : null}
+            onDownload={() => mainContentAudioPlayer.downloadForOffline(mainContentURL, mainContentDurationSec)}
           />
         )}
 

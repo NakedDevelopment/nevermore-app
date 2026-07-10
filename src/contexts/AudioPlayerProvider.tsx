@@ -13,6 +13,18 @@ export interface AudioChannel {
   isPlaying: boolean;
   isLoading: boolean;
   loadingUri: string | null;
+  /**
+   * True when a fresh streamed load has been buffering past the slow-connection
+   * threshold (~45s) without playback confirming — a cue for the screen to warn
+   * the user their connection is slow and offer `downloadForOffline`. UI-only:
+   * playback keeps trying underneath and is never interrupted by this flag.
+   */
+  isSlowConnection: boolean;
+  /**
+   * 0..1 while a user-initiated `downloadForOffline` is downloading the file,
+   * or null when no such download is in flight.
+   */
+  downloadProgress: number | null;
   currentTime: string;
   totalTime: string;
   remainingTime: string;
@@ -38,6 +50,13 @@ export interface AudioChannel {
    */
   loadAudio: (uri: string, knownDurationSec?: number) => Promise<void>;
   loadAndPlay: (uri: string, knownDurationSec?: number) => Promise<void>;
+  /**
+   * Force a full foreground download of `uri` into the cache (allowed on
+   * cellular — this is user-initiated), then play it from local disk. Pauses
+   * the stalled stream first so the download gets the whole pipe. Surfaced via
+   * the slow-connection prompt; safe to call for any streamed track.
+   */
+  downloadForOffline: (uri: string, knownDurationSec?: number) => Promise<void>;
   unloadAudio: () => Promise<void>;
   getPlaybackSnapshot: () => PlaybackSnapshot;
 }
@@ -144,6 +163,8 @@ function useAudioChannel(
   const [loadingUri, setLoadingUri] = useState<string | null>(null);
   const [isMuted, setIsMuted] = useState(false);
   const [currentUri, setCurrentUri] = useState<string | null>(null);
+  const [isSlowConnection, setIsSlowConnection] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
   const previousVolumeRef = useRef<number>(1.0);
   const operationIdRef = useRef(0);
   // A duration computed ahead of time and stored on the content record (see
@@ -161,6 +182,12 @@ function useAudioChannel(
   // set this; only a genuine loadAndPlay fetch does.
   const pendingPlayConfirmationRef = useRef<number | null>(null);
   const playConfirmationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Tracks the fresh-load operation the slow-connection timer is watching, plus
+  // the timer itself. Independent of the play-confirmation refs above: this one
+  // fires precisely when buffering drags on (the low-connection case), so it is
+  // NOT gated on isBuffering going false the way the spinner grace timer is.
+  const slowConnectionOpRef = useRef<number | null>(null);
+  const slowConnectionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Dispose the previous player after a swap. `createAudioPlayer` instances are
   // NOT auto-released (unlike the useAudioPlayer hook), so we must remove() the
@@ -217,6 +244,36 @@ function useAudioChannel(
     pendingPlayConfirmationRef.current = operationId;
   };
 
+  // How long a fresh streamed load may buffer without confirming playback
+  // before we surface the "slow connection, download instead?" prompt. Purely
+  // a UI cue — the timer never touches the player, so playback that eventually
+  // succeeds on its own still clears the prompt (see the status effect).
+  const SLOW_CONNECTION_PROMPT_MS = 45000;
+
+  const clearSlowConnection = () => {
+    slowConnectionOpRef.current = null;
+    if (slowConnectionTimeoutRef.current) {
+      clearTimeout(slowConnectionTimeoutRef.current);
+      slowConnectionTimeoutRef.current = null;
+    }
+    setIsSlowConnection(false);
+  };
+
+  // Arm the slow-connection prompt for a fresh streamed load. If playback
+  // hasn't confirmed within SLOW_CONNECTION_PROMPT_MS and this operation is
+  // still the current one, flip isSlowConnection so the screen can offer a
+  // download. Cached/local loads don't arm this (they play instantly).
+  const armSlowConnection = (operationId: number) => {
+    clearSlowConnection();
+    slowConnectionOpRef.current = operationId;
+    slowConnectionTimeoutRef.current = setTimeout(() => {
+      slowConnectionTimeoutRef.current = null;
+      if (slowConnectionOpRef.current === operationId && operationIdRef.current === operationId) {
+        setIsSlowConnection(true);
+      }
+    }, SLOW_CONNECTION_PROMPT_MS);
+  };
+
   // Everything below is derived straight from `status` (and the small bits
   // of app-level bookkeeping above) — no separate state to keep in sync.
   const isPlaying = currentUri != null && status.playing && !status.didJustFinish;
@@ -260,6 +317,13 @@ function useAudioChannel(
   // playback itself.
   const PLAY_CONFIRMATION_GRACE_MS = 3000;
   useEffect(() => {
+    // Playback actually started: clear the slow-connection prompt regardless of
+    // whether a play-confirmation was pending, so a stream that finally buffers
+    // through on its own dismisses the warning too.
+    if (status.playing && slowConnectionOpRef.current !== null) {
+      clearSlowConnection();
+    }
+
     const pendingId = pendingPlayConfirmationRef.current;
     if (pendingId === null || pendingId !== operationIdRef.current) return;
 
@@ -363,6 +427,9 @@ function useAudioChannel(
 
       knownDurationRef.current = normalizeKnownDuration(knownDurationSec);
       onPlayStart();
+      // Starting any load supersedes a previous stalled attempt — drop a stale
+      // slow-connection prompt; the streamed paths below re-arm it as needed.
+      clearSlowConnection();
 
       // Same audio already loaded — this is a "second play" (resume after a
       // pause, or replay after it finished).
@@ -416,6 +483,7 @@ function useAudioChannel(
         }
         fresh.play();
         armPlayConfirmation(operationId);
+        if (isRemoteUri(playableUri)) armSlowConnection(operationId);
         return;
       }
 
@@ -431,6 +499,9 @@ function useAudioChannel(
       if (operationId !== operationIdRef.current) return;
 
       armPlayConfirmation(operationId);
+      // Only a genuine remote stream can be slow — a local cached file plays
+      // instantly, so don't arm the "slow connection" prompt for it.
+      if (isRemoteUri(playableUri)) armSlowConnection(operationId);
 
       if (isRemoteUri(uri) && playableUri === uri) {
         // Playing a not-yet-cached remote track directly: warm the cache in
@@ -451,6 +522,7 @@ function useAudioChannel(
       }
     } catch (error) {
       clearPendingPlayConfirmation();
+      clearSlowConnection();
       if (operationId !== operationIdRef.current) return;
       console.error('Error loading and playing audio:', error);
       setCurrentUri(null);
@@ -466,10 +538,76 @@ function useAudioChannel(
     }
   };
 
+  // User tapped "download" on the slow-connection prompt. Pause the stalled
+  // stream (so the download gets the whole pipe — the contention lesson from
+  // the memory doc, but here it's user-initiated, not an automatic guess),
+  // download the full file to cache with progress, then play from local disk.
+  const downloadForOffline = async (uri: string, knownDurationSec?: number) => {
+    const operationId = ++operationIdRef.current;
+    clearPendingPlayConfirmation();
+    clearSlowConnection();
+    try {
+      if (!uri || uri.trim() === '') {
+        return;
+      }
+
+      knownDurationRef.current = normalizeKnownDuration(knownDurationSec) ?? knownDurationRef.current;
+      onPlayStart();
+
+      // Free the pipe: stop the streaming attempt before pulling the file.
+      try { playerRef.current.pause(); } catch {}
+
+      setIsLoading(true);
+      setLoadingUri(uri);
+      setDownloadProgress(0);
+
+      const localUri = await audioCacheService.downloadForPlayback(uri, (fraction) => {
+        if (operationId === operationIdRef.current) {
+          setDownloadProgress(fraction);
+        }
+      });
+      if (operationId !== operationIdRef.current) return;
+
+      setDownloadProgress(null);
+
+      // Play the freshly downloaded local file on a fresh player. (If the
+      // download failed, downloadForPlayback returns the remote URL and this
+      // gracefully falls back to streaming.)
+      const p = swapToFreshPlayer(localUri);
+      if (operationId !== operationIdRef.current) return;
+
+      setIsMuted(false);
+      previousVolumeRef.current = 1.0;
+      p.volume = 1.0;
+      setCurrentUri(uri);
+
+      await setIsAudioActiveAsync(true);
+      if (operationId !== operationIdRef.current) return;
+      p.play();
+      armPlayConfirmation(operationId);
+      // A local file that somehow still streams (download fell back to the
+      // remote URL) can still be slow — arm the prompt again in that case only.
+      if (isRemoteUri(localUri)) armSlowConnection(operationId);
+    } catch (error) {
+      clearPendingPlayConfirmation();
+      clearSlowConnection();
+      setDownloadProgress(null);
+      if (operationId !== operationIdRef.current) return;
+      console.error('Error downloading audio for offline playback:', error);
+    } finally {
+      if (operationId === operationIdRef.current && pendingPlayConfirmationRef.current !== operationId) {
+        setIsLoading(false);
+        setLoadingUri(null);
+      }
+    }
+  };
+
   const unloadAudio = async () => {
     operationIdRef.current++;
     knownDurationRef.current = null;
     clearPendingPlayConfirmation();
+    clearSlowConnection();
+    setDownloadProgress(null);
     try {
       if (playerRef.current.playing) {
         playerRef.current.pause();
@@ -530,6 +668,7 @@ function useAudioChannel(
     // stop()/pauseFromCoordinator() already do, or the play button gets
     // stuck on its loading spinner after a fast pause during a play attempt.
     clearPendingPlayConfirmation();
+    clearSlowConnection();
     setIsLoading(false);
     setLoadingUri(null);
     try {
@@ -550,6 +689,7 @@ function useAudioChannel(
       playerRef.current.pause();
     } catch {}
     clearPendingPlayConfirmation();
+    clearSlowConnection();
     setIsLoading(false);
     setLoadingUri(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -558,6 +698,7 @@ function useAudioChannel(
   const stop = async () => {
     operationIdRef.current++;
     clearPendingPlayConfirmation();
+    clearSlowConnection();
     try {
       // Always try to pause, regardless of currentUri state
       playerRef.current.pause();
@@ -675,6 +816,8 @@ function useAudioChannel(
     isPlaying,
     isLoading,
     loadingUri,
+    isSlowConnection,
+    downloadProgress,
     currentTime,
     totalTime,
     remainingTime,
@@ -693,6 +836,7 @@ function useAudioChannel(
     forward,
     loadAudio,
     loadAndPlay,
+    downloadForOffline,
     unloadAudio,
     getPlaybackSnapshot,
     pauseFromCoordinator,

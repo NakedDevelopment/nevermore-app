@@ -378,6 +378,19 @@ export const FortyDay = () => {
                     {isItemAudioLoaded && !isItemLoading ? audioPlayer.remainingTime : '--:--'}
                   </Text>
                 )}
+                {isCurrentItem && !!item.audioUrl && audioPlayer.downloadProgress != null && (
+                  <Text style={styles.slowConnectionHint}>
+                    Downloading… {Math.round(audioPlayer.downloadProgress * 100)}%
+                  </Text>
+                )}
+                {isCurrentItem && !!item.audioUrl && audioPlayer.downloadProgress == null && audioPlayer.isSlowConnection && (
+                  <TouchableOpacity
+                    style={styles.downloadChip}
+                    onPress={() => audioPlayer.downloadForOffline(item.audioUrl!, item.audioDurationSec)}
+                  >
+                    <Text style={styles.downloadChipText}>Slow connection — tap to download</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             )}
           </View>
@@ -844,6 +857,26 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: 'rgba(255, 255, 255, 0.7)',
     marginTop: 6,
+  },
+  slowConnectionHint: {
+    fontFamily: 'Roboto_400Regular',
+    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.7)',
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  downloadChip: {
+    marginTop: 8,
+    backgroundColor: '#8B5CF6',
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+  },
+  downloadChipText: {
+    fontFamily: 'Roboto_500Medium',
+    fontSize: 12,
+    color: '#FFFFFF',
+    textAlign: 'center',
   },
   mediaIconAreaDisabled: {
     opacity: 0.3,

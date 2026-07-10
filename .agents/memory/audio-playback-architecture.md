@@ -65,6 +65,39 @@ sibling stops immediately during the load window rather than after caching finis
 The playlist channel (reflection, via `useAudioPlaylist`) is the intentional exception: it
 auto-plays on selection. Single tracks never auto-play.
 
+## Slow-connection prompt + user-initiated download (July 2026)
+
+For heavy content on weak cellular the file simply streams (it never background-caches —
+`warmAudio` is WiFi-only), and a weak pipe sometimes never fills the buffer, so playback
+"doesn't start." Rather than fight this automatically, we surface it to the user:
+
+- Each channel arms a **45s slow-connection timer** (`SLOW_CONNECTION_PROMPT_MS`) whenever a
+  *fresh streamed* load starts (only when `isRemoteUri(playableUri)` — a local/cached load
+  plays instantly and never arms it). If playback hasn't confirmed (`status.playing`) within
+  45s and the op is still current, `isSlowConnection` flips true. The screen shows a "Slow
+  connection — download to play" prompt (`MediaControls` for TemptationDetails main content;
+  a compact chip on the current FortyDay day).
+- The timer is **UI-only** — it never calls `pause`/`replace`/`seekTo`/`play`. Playback keeps
+  trying underneath; if the stream eventually buffers through, the status effect sees
+  `status.playing` and clears `isSlowConnection` on its own. This is the crucial distinction
+  from the reverted `waitForPlaybackProgress` auto-verify (see below): that mechanism
+  *automatically interrupted* a slow-but-healthy stream. This one only *offers* an action.
+- `downloadForOffline(uri)` runs only when the **user taps** the button. It pauses the stalled
+  stream (freeing the pipe — the contention lesson, but here user-initiated, not a guess),
+  calls `audioCacheService.downloadForPlayback(uri, onProgress)` — a foreground download that
+  deliberately **bypasses the WiFi gate** (`downloadForPlayback` does NOT call
+  `isBackgroundDownloadAllowed`, unlike `warmAudio`) — shows `downloadProgress` (0..1), then
+  plays the downloaded local file on a fresh player.
+- Once downloaded, the file is in the normal persistent cache, so **switching to other audio
+  and returning replays it from disk** (via `getPlayableUri`'s cache hit) with no re-download
+  and no slow-prompt — until iOS purges `cacheDirectory` under storage pressure. If that
+  eviction ever needs to be prevented for heavy content, move these downloads to
+  `documentDirectory`.
+
+**Do NOT turn this into an automatic pause-and-download.** The 45s flag must never trigger a
+download or touch the player by itself — only the user's tap may. Keeping it user-initiated is
+exactly what keeps it clear of the reverted auto-verify trap.
+
 ## Convention: clear `isLoading` only once the native player confirms playing — still no post-play verification
 
 In `loadAndPlay`'s fresh-load path, `setIsLoading(false)`/`setLoadingUri(null)` is no longer
