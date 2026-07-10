@@ -371,7 +371,7 @@ function useAudioChannel(
         // from disk and gets a correct extension for duration/seek metadata.
         // Does not block or interrupt this preload — same pattern as
         // loadAndPlay. See .agents/memory/audio-playback-architecture.md.
-        audioCacheService.warmAudio(uri).catch((error) => {
+        audioCacheService.warmAudio(uri, { knownDurationSec: knownDurationRef.current }).catch((error) => {
           console.warn('Failed to warm preloaded audio cache:', error);
         });
       }
@@ -441,7 +441,7 @@ function useAudioChannel(
         // .agents/memory/audio-playback-architecture.md for why that was
         // already tried and reverted (it misdiagnoses a slow-but-healthy
         // stream as stalled and interrupts it).
-        audioCacheService.warmAudio(uri).catch((error) => {
+        audioCacheService.warmAudio(uri, { knownDurationSec: knownDurationRef.current }).catch((error) => {
           console.warn('Failed to warm streamed audio cache:', error);
         });
       }
@@ -599,7 +599,7 @@ function useAudioChannel(
       armPlayConfirmation(operationId);
 
       if (isRemoteUri(uri) && playableUri === uri) {
-        audioCacheService.warmAudio(uri).catch((error) => {
+        audioCacheService.warmAudio(uri, { knownDurationSec: knownDurationRef.current }).catch((error) => {
           console.warn('Failed to warm restarted audio cache:', error);
         });
       }

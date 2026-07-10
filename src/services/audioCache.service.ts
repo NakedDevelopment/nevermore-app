@@ -12,6 +12,14 @@ const AUDIO_CACHE_DIR = `${FileSystem.cacheDirectory}audio/`;
 // re-downloaded and re-extensioned correctly.
 const CACHE_INDEX_KEY = '@audio_cache_index_v3';
 
+// Audio at/above this duration (seconds) is cached over cellular too, not just
+// WiFi — these are the long (~8 min) files that fail to replay when re-streamed
+// on a reused native player over cellular, so caching them makes the second
+// play a reliable local-file play. Shorter files stream fine and stay
+// WiFi-only to conserve cellular data. 5 minutes cleanly separates the heavy
+// content items from ordinary short clips.
+const LARGE_AUDIO_CELLULAR_CACHE_THRESHOLD_SEC = 5 * 60;
+
 interface CacheEntry {
   remoteUrl: string;
   localPath: string;
@@ -311,27 +319,47 @@ class AudioCacheService {
    * connection. Background warming pulls the entire file, and on metered
    * cellular it competes for bandwidth with the native player's own streaming
    * fetch when the user taps play on an audio that isn't fully cached yet —
-   * starving the actual playback stream (worst for the heaviest files, e.g.
-   * "Internal Thoughts"). It also burns cellular data the client asked us to
-   * conserve. So warming only runs on unmetered links (WiFi/Ethernet); on
-   * cellular the file simply streams on tap (getting the whole pipe) and is
-   * warmed later once the user is on WiFi.
+   * starving the actual playback stream. It also burns cellular data the client
+   * asked us to conserve. So by default warming only runs on unmetered links
+   * (WiFi/Ethernet).
+   *
+   * The exception (`allowCellular`) is LARGE audio: the ~8-minute files
+   * (e.g. "Internal Thoughts", Day 7 "Economic Status", the first recovery
+   * temptation) are exactly the ones that, when re-streamed on cellular via a
+   * reused native player, fail to play on a return visit. For those we
+   * intentionally cache over cellular so the SECOND play is served from local
+   * disk (reliable) — a bounded, one-time cost that also avoids re-streaming
+   * the whole file on every subsequent play. Small files stay WiFi-only.
    *
    * Fails OPEN (returns true) if the network type can't be determined, so a
    * transient probe failure never permanently disables caching.
    */
-  private async isBackgroundDownloadAllowed(): Promise<boolean> {
+  private async isBackgroundDownloadAllowed(allowCellular: boolean): Promise<boolean> {
     try {
       const state = await Network.getNetworkStateAsync();
       if (state.isConnected === false) return false;
-      if (state.type === Network.NetworkStateType.CELLULAR) return false;
+      if (state.type === Network.NetworkStateType.CELLULAR) return allowCellular;
       return true;
     } catch {
       return true;
     }
   }
 
-  async warmAudio(remoteUrl: string): Promise<void> {
+  /**
+   * Pre-download a remote audio into the cache.
+   *
+   * @param options.knownDurationSec  Duration (seconds) of the audio when
+   *   known. Files at/above LARGE_AUDIO_CELLULAR_CACHE_THRESHOLD_SEC are cached
+   *   over cellular too (see isBackgroundDownloadAllowed); shorter files remain
+   *   WiFi-only.
+   * @param options.forceCellular  Cache over cellular regardless of duration —
+   *   used by callers that already know they're warming a specific heavy file
+   *   (e.g. the onboarding highlight prewarm) but don't have its duration.
+   */
+  async warmAudio(
+    remoteUrl: string,
+    options?: { knownDurationSec?: number | null; forceCellular?: boolean }
+  ): Promise<void> {
     await this.init();
 
     if (!remoteUrl || remoteUrl.trim() === '') {
@@ -356,9 +384,17 @@ class AudioCacheService {
       }
     }
 
-    // Only warm on unmetered connections — see isBackgroundDownloadAllowed.
-    // Already-cached files returned above are served regardless of connection.
-    if (!(await this.isBackgroundDownloadAllowed())) {
+    const durationSec = options?.knownDurationSec;
+    const isLargeFile =
+      typeof durationSec === 'number' &&
+      isFinite(durationSec) &&
+      durationSec >= LARGE_AUDIO_CELLULAR_CACHE_THRESHOLD_SEC;
+    const allowCellular = options?.forceCellular === true || isLargeFile;
+
+    // Warm on WiFi always; on cellular only for large files (see
+    // isBackgroundDownloadAllowed). Already-cached files returned above are
+    // served regardless of connection.
+    if (!(await this.isBackgroundDownloadAllowed(allowCellular))) {
       return;
     }
 
