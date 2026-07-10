@@ -110,12 +110,8 @@ export const MediaControls: React.FC<MediaControlsProps> = ({
           )}
         </TouchableOpacity>
 
-        {/* Stop stays enabled even while loading: it is the user's escape hatch
-            from a stuck/never-confirming load (a wedged native player emits no
-            status events, so the spinner can otherwise sit indefinitely).
-            stop() is a safe hard-reset — it only pauses/seeks/clears state. */}
-        <TouchableOpacity style={styles.stopButton} onPress={onStop}>
-          <StopButtonIcon width={36} height={36} color="#FFFFFF" />
+        <TouchableOpacity style={styles.stopButton} onPress={onStop} disabled={isLoading}>
+          <StopButtonIcon width={36} height={36} color={isLoading ? "#666666" : "#FFFFFF"} />
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.mediaControl} onPress={onForward} disabled={isLoading}>

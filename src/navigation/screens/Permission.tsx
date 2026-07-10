@@ -14,20 +14,11 @@ import { Button } from '../../components/Button';
 import { useOnboardingStore } from '../../store/onboardingStore';
 import { useAuthStore } from '../../store/authStore';
 import { ScreenNames } from '../../constants/ScreenNames';
-import { prewarmOnboardingHighlightAudio } from '../../services/audioPrewarm';
 
 export function Permission() {
   const navigation = useNavigation();
   const { setCurrentStep } = useOnboardingStore();
   const { signOut } = useAuthStore();
-
-  // Start warming the one heavy highlight audio ("Internal Thoughts") in the
-  // background at the very start of onboarding, so it's cached by the time the
-  // user reaches it — the user spends the next few onboarding screens giving it
-  // time to download. Best-effort and WiFi-gated; a no-op on cellular.
-  React.useEffect(() => {
-    prewarmOnboardingHighlightAudio();
-  }, []);
 
   const handleBack = async () => {
     if ((navigation as any).canGoBack()) {

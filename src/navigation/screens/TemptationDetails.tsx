@@ -224,14 +224,10 @@ export default function TemptationDetails() {
     await mainContentAudioPlayer.forward();
   }, [isActiveMainTrack, mainContentAudioPlayer]);
 
-  // Square button = restart the track from scratch. Allowed while this track
-  // is active OR still buffering, so it doubles as the escape hatch from a
-  // stuck/never-confirming load (restart re-replaces the native source and
-  // recovers a wedged player).
   const handleMainStop = React.useCallback(async () => {
-    if (!isActiveMainTrack && !isMainTrackBuffering) return;
-    await mainContentAudioPlayer.restart();
-  }, [isActiveMainTrack, isMainTrackBuffering, mainContentAudioPlayer]);
+    if (!isActiveMainTrack) return;
+    await mainContentAudioPlayer.stop();
+  }, [isActiveMainTrack, mainContentAudioPlayer]);
 
   const handleMainSeek = React.useCallback(async (progress: number) => {
     if (!isActiveMainTrack) return;

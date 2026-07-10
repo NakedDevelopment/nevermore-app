@@ -22,13 +22,6 @@ export interface AudioChannel {
   play: () => Promise<void>;
   pause: () => Promise<void>;
   stop: () => Promise<void>;
-  /**
-   * Restart the current track "from scratch": re-resolve its source and play
-   * from position 0. Unlike `stop` (a plain halt), this re-`replace()`s the
-   * native item, which also recovers a wedged/never-confirming load. Backs the
-   * square/Stop button in the UI. No-op when nothing is loaded.
-   */
-  restart: () => Promise<void>;
   togglePlayPause: () => Promise<void>;
   toggleMute: () => Promise<void>;
   seekForward: (seconds: number) => Promise<void>;
@@ -92,16 +85,6 @@ const isPlayerAtEnd = (player: AudioPlayer): boolean => {
 
 const isRemoteUri = (uri: string): boolean => /^https?:\/\//i.test(uri);
 
-// How often, during a pending fresh-load, we poll the imperative
-// `player.playing` property as a backstop to the status-event effect below.
-// `player.playing` reads the live AVPlayer `timeControlStatus` directly (it is
-// NOT event-driven), so it stays correct even when the native player stops
-// emitting PLAYBACK_STATUS_UPDATE events — the exact condition (a reused
-// AVPlayer stuck in `.waitingToPlayAtSpecifiedRate`) that otherwise leaves the
-// spinner armed forever waiting for an event that never arrives. See
-// .agents/memory/audio-playback-architecture.md.
-const PLAY_CONFIRMATION_POLL_MS = 250;
-
 const normalizeKnownDuration = (value?: number): number | null =>
   typeof value === 'number' && isFinite(value) && value > 0 ? value : null;
 
@@ -158,9 +141,6 @@ function useAudioChannel(
   // set this; only a genuine loadAndPlay fetch does.
   const pendingPlayConfirmationRef = useRef<number | null>(null);
   const playConfirmationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Backstop poll + absolute ceiling for a pending fresh-load — see the
-  // PLAY_CONFIRMATION_POLL_MS / PLAY_CONFIRMATION_CEILING_MS notes above.
-  const playConfirmationPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const getEffectiveDuration = (): number | null => {
     if (isFinite(player.duration) && player.duration > 0) return player.duration;
@@ -173,18 +153,6 @@ function useAudioChannel(
       clearTimeout(playConfirmationTimeoutRef.current);
       playConfirmationTimeoutRef.current = null;
     }
-    if (playConfirmationPollRef.current) {
-      clearInterval(playConfirmationPollRef.current);
-      playConfirmationPollRef.current = null;
-    }
-  };
-
-  // Clears the loading spinner for a pending fresh-load and tears down its
-  // confirmation timers. UI-only: never touches the native player.
-  const confirmPlayAndClearSpinner = () => {
-    clearPendingPlayConfirmation();
-    setIsLoading(false);
-    setLoadingUri(null);
   };
 
   // Marks a fresh-load operation as waiting for the native player to confirm
@@ -193,45 +161,7 @@ function useAudioChannel(
   // native `status.isBuffering` signal instead of guessing off a fixed
   // timeout — see that effect for why.
   const armPlayConfirmation = (operationId: number) => {
-    clearPendingPlayConfirmation();
     pendingPlayConfirmationRef.current = operationId;
-
-    // Backstop the status-event effect below with a poll of the imperative
-    // `player.playing` property. The effect only re-runs when a native status
-    // event lands, but a reused AVPlayer that wedges in
-    // `.waitingToPlayAtSpecifiedRate` stops emitting events entirely — so the
-    // effect would wait forever even though audio may actually be playing.
-    // `player.playing` is read live from the native player on every tick, so
-    // this clears the spinner the instant playback truly starts, regardless of
-    // whether an event arrived. It deliberately has NO time ceiling: while a
-    // track is genuinely still loading the spinner shows as long as it takes;
-    // recovery from a stuck load is the square/restart button, not a timeout.
-    // Never touches playback.
-    playConfirmationPollRef.current = setInterval(() => {
-      if (
-        pendingPlayConfirmationRef.current !== operationId ||
-        operationIdRef.current !== operationId
-      ) {
-        // Superseded by a newer operation, which owns the spinner now.
-        if (playConfirmationPollRef.current) {
-          clearInterval(playConfirmationPollRef.current);
-          playConfirmationPollRef.current = null;
-        }
-        return;
-      }
-
-      let playing = false;
-      try {
-        playing = player.playing;
-      } catch {
-        // Reading the native property can throw on a torn-down player; treat
-        // as "not yet playing" and keep waiting.
-      }
-
-      if (playing) {
-        confirmPlayAndClearSpinner();
-      }
-    }, PLAY_CONFIRMATION_POLL_MS);
   };
 
   // Everything below is derived straight from `status` (and the small bits
@@ -346,16 +276,10 @@ function useAudioChannel(
       // Always pause before loading new audio to prevent overlap
       player.pause();
 
-      // Stream-first, mirroring loadAndPlay: resolve to the cached file when
-      // it exists, otherwise the remote URL so the source is ready in ~1s
-      // instead of blocking on a full multi-MB download (the old getAudioUri
-      // path). This is a preload (no play() here), so the source just needs to
-      // be set for the player to pull metadata/duration; the full file is
-      // fetched in the background below for a future warm play.
-      const playableUri = await audioCacheService.getPlayableUri(uri);
+      const cachedUri = await audioCacheService.getAudioUri(uri);
       if (operationId !== operationIdRef.current) return;
 
-      const audioSource: AudioSource = { uri: playableUri };
+      const audioSource: AudioSource = { uri: cachedUri };
       await player.replace(audioSource);
       if (operationId !== operationIdRef.current) return;
 
@@ -364,17 +288,6 @@ function useAudioChannel(
       player.volume = 1.0;
 
       setCurrentUri(uri);
-
-      if (isRemoteUri(uri) && playableUri === uri) {
-        // Not-yet-cached remote track: warm the full file in the background
-        // (self-gates to unmetered connections) so the eventual play is served
-        // from disk and gets a correct extension for duration/seek metadata.
-        // Does not block or interrupt this preload — same pattern as
-        // loadAndPlay. See .agents/memory/audio-playback-architecture.md.
-        audioCacheService.warmAudio(uri, { knownDurationSec: knownDurationRef.current }).catch((error) => {
-          console.warn('Failed to warm preloaded audio cache:', error);
-        });
-      }
     } catch (error) {
       if (operationId !== null && operationId !== operationIdRef.current) return;
       console.error('Error loading audio:', error);
@@ -441,7 +354,7 @@ function useAudioChannel(
         // .agents/memory/audio-playback-architecture.md for why that was
         // already tried and reverted (it misdiagnoses a slow-but-healthy
         // stream as stalled and interrupts it).
-        audioCacheService.warmAudio(uri, { knownDurationSec: knownDurationRef.current }).catch((error) => {
+        audioCacheService.warmAudio(uri).catch((error) => {
           console.warn('Failed to warm streamed audio cache:', error);
         });
       }
@@ -567,54 +480,6 @@ function useAudioChannel(
     }
   };
 
-  // Square button: restart the current track from scratch. Re-resolves the
-  // source and plays from 0 via the same fresh-load path as loadAndPlay, so a
-  // fresh native item is created — this both restarts playback and recovers a
-  // wedged player that stopped emitting status events. Works during loading
-  // too (the escape hatch): falls back to `loadingUri` when `currentUri` isn't
-  // set yet (mid-load, before the source was replaced).
-  const restart = async () => {
-    const uri = currentUri ?? loadingUri;
-    if (!uri) {
-      return;
-    }
-
-    const operationId = ++operationIdRef.current;
-    clearPendingPlayConfirmation();
-    try {
-      onPlayStart();
-      setIsLoading(true);
-      setLoadingUri(uri);
-
-      if (player.playing) {
-        player.pause();
-      }
-
-      const playableUri = await audioCacheService.getPlayableUri(uri);
-      if (operationId !== operationIdRef.current) return;
-
-      await playResolvedSource(uri, playableUri, operationId);
-      if (operationId !== operationIdRef.current) return;
-
-      armPlayConfirmation(operationId);
-
-      if (isRemoteUri(uri) && playableUri === uri) {
-        audioCacheService.warmAudio(uri, { knownDurationSec: knownDurationRef.current }).catch((error) => {
-          console.warn('Failed to warm restarted audio cache:', error);
-        });
-      }
-    } catch (error) {
-      clearPendingPlayConfirmation();
-      if (operationId !== operationIdRef.current) return;
-      console.error('Error restarting audio:', error);
-    } finally {
-      if (operationId === operationIdRef.current && pendingPlayConfirmationRef.current !== operationId) {
-        setIsLoading(false);
-        setLoadingUri(null);
-      }
-    }
-  };
-
   const seekForward = async (seconds: number) => {
     try {
       if (!currentUri) {
@@ -725,7 +590,6 @@ function useAudioChannel(
     play,
     pause,
     stop,
-    restart,
     togglePlayPause,
     toggleMute,
     seekForward,
@@ -744,24 +608,9 @@ function useAudioChannel(
 export function AudioPlayerProvider({ children }: { children: React.ReactNode }) {
   // One persistent native player per logical channel. These live for the
   // lifetime of the app, so audio keeps playing as the user navigates.
-  //
-  // keepAudioSessionActive: true is critical. By default expo-audio calls
-  // AVAudioSession.setActive(false) 100ms after every pause() if no player has
-  // yet reached timeControlStatus == .playing. When a large audio streams over
-  // cellular (the only case not served from the WiFi-warmed cache), it sits in
-  // .waitingToPlayAtSpecifiedRate for well over 100ms while buffering — so that
-  // delayed deactivation tears the audio session down mid-buffer and the player
-  // wedges in .waitingToPlayAtSpecifiedRate forever (no audio, no status
-  // events, spinner never clears). Small/cached files reach .playing inside the
-  // 100ms window and are unaffected — which is exactly why only the big files,
-  // and only on cellular, failed. Keeping the session active removes that
-  // deactivate-on-pause entirely; the app already owns the session lifecycle
-  // globally via setAudioModeAsync/setIsAudioActiveAsync and never deactivates
-  // it, so this is consistent. See .agents/memory/audio-playback-architecture.md.
-  const keepSessionActive = { keepAudioSessionActive: true };
-  const mainPlayer = useExpoAudioPlayer(null, keepSessionActive);
-  const reflectionPlayer = useExpoAudioPlayer(null, keepSessionActive);
-  const fortydayPlayer = useExpoAudioPlayer(null, keepSessionActive);
+  const mainPlayer = useExpoAudioPlayer();
+  const reflectionPlayer = useExpoAudioPlayer();
+  const fortydayPlayer = useExpoAudioPlayer();
   const channelsRef = useRef<Partial<Record<ChannelName, InternalAudioChannel>>>({});
 
   // Configure the audio session once so playback continues when the app is

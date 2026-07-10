@@ -120,7 +120,7 @@ export default function Transcript() {
               onPlayPause={audioPlayer.togglePlayPause}
               onRewind={audioPlayer.rewind}
               onForward={audioPlayer.forward}
-              onStop={audioPlayer.restart}
+              onStop={audioPlayer.stop}
               onSeek={audioPlayer.seekTo}
             />
           </View>
