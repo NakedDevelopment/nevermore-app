@@ -38,6 +38,43 @@ no spinner). A **streamed** track rebuilds a fresh player (re-resolving via `get
 case it has since cached), preserves position for a mid-stream resume via `seekTo`, and arms the
 normal play-confirmation spinner. Do NOT revert this branch to an unconditional `p.play()` reuse.
 
+## Free the pipe: release the outgoing player BEFORE the fresh one's play() (July 2026)
+
+Symptom (build 95, heavy streamed audio like "Internal Thoughts" on cellular): **first play
+works, but (a) pause then play again, or (b) switch to other audio and come back, hangs on the
+loading spinner forever and never starts.** Case (b) is the key tell — it goes through the
+fresh-load path and plays from position 0 with *no* `seekTo`, yet still hangs, which rules the
+seek out as the root cause and points at player/connection contention.
+
+Root cause: an expo-audio player built with `keepAudioSessionActive: true` keeps its
+`AVPlayerItem` and the live network fetch of its (heavy) remote URL alive even after `pause()`.
+The fresh-per-track logic rebuilds a new player, but the outgoing one was only *paused* and only
+`remove()`d later in a post-render effect. Callers call `play()` on the fresh player the instant
+`swapToFreshPlayer` returns — before React re-renders — so the old fetch was still open during
+that `play()`, and the two streams fought over the weak cellular pipe; the fresh one never filled
+its buffer.
+
+Fix: `swapToFreshPlayer` now `remove()`s the outgoing player **synchronously, first**, before
+`createAudioPlayer` for the new one, and sets `prevPlayerRef.current = next` so the post-render
+disposal effect (now a safety-net no-op) doesn't double-remove. Removing synchronously is safe
+even though `useAudioPlayerStatus` is still subscribed to the old player for that tick: the swap
+runs from an event handler (not render), `remove()` just stops further status events (last status
+stays readable, no throw), and `setPlayer` schedules the re-render that moves the subscription to
+`next`. **Do NOT move this teardown back into the post-render effect** — teardown-before-the-fresh-
+`play()` is the whole point.
+
+Second, independent hang in the pause→resume branch only: it used to `await fresh.seekTo(pos)`
+BEFORE `fresh.play()`. Awaiting a seek into a not-yet-buffered remote offset can itself hang
+forever (the server may not honor the byte-range request). That branch now calls `fresh.play()`
+first, then `fresh.seekTo(pos).catch(() => {})` best-effort (not awaited): playback is guaranteed
+to resume; if the seek can't buffer, audio just keeps playing from where it started instead of
+hanging. **Do NOT re-await a seek before play() on a fresh remote stream.**
+
+Note this reintroduces the eager-teardown idea from an earlier abandoned attempt, but adds the
+non-awaited-seek fix that attempt lacked (which is why that attempt still left pause→resume
+hanging). The slow-connection prompt / user-download button stay as they are — they are NOT the
+fix for this and were intentionally not expanded here.
+
 ## Convention: primary single-track play handlers
 
 Every screen's play/pause button for a primary single audio track (e.g. FortyDay challenge,

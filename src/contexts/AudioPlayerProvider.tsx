@@ -189,11 +189,14 @@ function useAudioChannel(
   const slowConnectionOpRef = useRef<number | null>(null);
   const slowConnectionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Dispose the previous player after a swap. `createAudioPlayer` instances are
-  // NOT auto-released (unlike the useAudioPlayer hook), so we must remove() the
-  // old one or leak native resources. Runs as a post-render effect, so
-  // `useAudioPlayerStatus` has already moved its subscription to the new player
-  // before the old one is torn down.
+  // Fallback disposal of a swapped-out player. `createAudioPlayer` instances are
+  // NOT auto-released (unlike the useAudioPlayer hook), so a discarded player
+  // must be remove()d or it leaks native resources. swapToFreshPlayer now
+  // releases the outgoing player eagerly (see there — the teardown must happen
+  // BEFORE the fresh player's play() to free the network pipe) and keeps
+  // prevPlayerRef in sync, so this effect is normally a no-op. It stays as a
+  // safety net in case `player` is ever changed by a path other than
+  // swapToFreshPlayer.
   const prevPlayerRef = useRef<AudioPlayer>(player);
   useEffect(() => {
     const prev = prevPlayerRef.current;
@@ -211,12 +214,34 @@ function useAudioChannel(
   // Build a brand-new player for `resolvedUri`, make it the current player, and
   // return it. Sets `playerRef` synchronously so the imperative caller can act
   // on the new player immediately; `setPlayer` triggers the re-render that
-  // re-subscribes status and disposes the old player (effect above).
+  // re-subscribes status to the new player.
   const swapToFreshPlayer = (resolvedUri: string): AudioPlayer => {
+    // Release the OUTGOING player BEFORE building the fresh one. A player built
+    // with keepAudioSessionActive:true keeps its AVPlayerItem — and the live
+    // network connection to its (often heavy) remote URL — alive even after
+    // pause(). Callers call play() on the fresh player the instant this returns,
+    // i.e. BEFORE React re-renders, so if the old player were left alive its
+    // still-open fetch of the same file competes with the fresh stream over a
+    // weak cellular pipe and the fresh one never fills its buffer: the reported
+    // "first play works, but resume-after-pause / return-to-track hangs on
+    // loading forever" bug. Freeing the outgoing player here — before the new
+    // one even exists — hands the whole pipe to the fresh stream.
+    //
+    // Safe to remove() synchronously even though useAudioPlayerStatus is still
+    // subscribed to the outgoing player for this tick: this runs from an event
+    // handler (not during render), remove() just stops further status events
+    // (the last status stays readable, no throw), and setPlayer() below
+    // schedules the re-render that moves the subscription to `next`. No render
+    // reads a removed player's status in between.
+    const outgoing = playerRef.current;
+    try { outgoing?.remove(); } catch {}
     const source: AudioSource = { uri: resolvedUri };
     const next = createAudioPlayer(source, PLAYER_OPTIONS);
     playerRef.current = next;
     resolvedSourceUriRef.current = resolvedUri;
+    // Keep the fallback disposal effect's bookkeeping in sync so it never tries
+    // to remove `outgoing` a second time on the next render.
+    prevPlayerRef.current = next;
     setPlayer(next);
     return next;
   };
@@ -477,13 +502,20 @@ function useAudioChannel(
 
         await setIsAudioActiveAsync(true);
         if (operationId !== operationIdRef.current) return;
-        if (resumePositionSec > 0) {
-          try { await fresh.seekTo(resumePositionSec); } catch {}
-          if (operationId !== operationIdRef.current) return;
-        }
+        // Start playback FIRST, then restore position best-effort — do NOT await
+        // a seek here. A fresh remote stream has nothing buffered yet, and
+        // awaiting a seek into an unbuffered offset can hang indefinitely on
+        // weak cellular (the server may not honor the byte-range request) — the
+        // second way resume got stuck on the loading spinner. Playing from the
+        // stream start and letting the seek land afterwards guarantees playback
+        // actually resumes; if the seek can't buffer, audio simply keeps playing
+        // from where it started instead of hanging.
         fresh.play();
         armPlayConfirmation(operationId);
         if (isRemoteUri(playableUri)) armSlowConnection(operationId);
+        if (resumePositionSec > 0) {
+          fresh.seekTo(resumePositionSec).catch(() => {});
+        }
         return;
       }
 
