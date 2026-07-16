@@ -100,5 +100,6 @@ New in this build:
 - [x] `eas build --platform android --profile production` started (no auto-submit — see above)
 - [x] iOS cloud build finished (build 100, finished 2026-07-16 21:57 UTC, ~7 min)
 - [ ] Submitted to TestFlight / processing in App Store Connect
-- [ ] Android cloud build finished / AAB uploaded to Play Console manually
+- [x] Android cloud build finished (versionCode 6) — AAB: https://expo.dev/artifacts/eas/ziiHw4YRxnfkY5iyv2vNVaLQ-X1gvZ9rh5UW-OQ-5Kc.aab
+- [ ] AAB uploaded to Play Console manually (no service-account key in repo)
 - [ ] Verified on device (see checklist above)
