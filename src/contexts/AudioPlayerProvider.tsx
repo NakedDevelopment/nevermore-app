@@ -107,6 +107,24 @@ const isRemoteUri = (uri: string): boolean => /^https?:\/\//i.test(uri);
 const normalizeKnownDuration = (value?: number): number | null =>
   typeof value === 'number' && isFinite(value) && value > 0 ? value : null;
 
+// Await a native seek, but never for longer than the cap. Seeking a remote
+// source into an unbuffered offset can hang indefinitely on weak cellular (the
+// server may not honor the byte-range request), and several callers await a
+// seek before continuing (e.g. Transcript seeks to the saved position before
+// resuming playback). The native seek keeps going in the background and lands
+// whenever it can — only the await is bounded.
+const SEEK_AWAIT_CAP_MS = 3000;
+const seekWithCap = (p: AudioPlayer, positionSec: number): Promise<void> =>
+  new Promise<void>((resolve) => {
+    const timer = setTimeout(resolve, SEEK_AWAIT_CAP_MS);
+    p.seekTo(positionSec)
+      .catch(() => {})
+      .finally(() => {
+        clearTimeout(timer);
+        resolve();
+      });
+  });
+
 // Options for every player instance. keepAudioSessionActive:true stops
 // expo-audio from deactivating the shared AVAudioSession on pause() — that
 // delayed setActive(false) is what killed a large file mid-buffer on cellular
@@ -188,6 +206,19 @@ function useAudioChannel(
   // NOT gated on isBuffering going false the way the spinner grace timer is.
   const slowConnectionOpRef = useRef<number | null>(null);
   const slowConnectionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Position (sec) of the current track when its streamed player was torn down
+  // by the cross-channel coordinator (see detachStreamedPlayer). Non-null means
+  // "currentUri is still the loaded track, but it has no live player right
+  // now"; loadAndPlay's same-track branch and play() rebuild a fresh player
+  // from this snapshot. Ref + state pair: imperative code reads the ref to
+  // avoid stale-render values; the state mirror keeps the progress/time
+  // display showing the paused position while the track has no live player.
+  const detachedPositionRef = useRef<number | null>(null);
+  const [detachedPositionSec, setDetachedPositionSec] = useState<number | null>(null);
+  const setDetachedPosition = (value: number | null) => {
+    detachedPositionRef.current = value;
+    setDetachedPositionSec(value);
+  };
 
   // Fallback disposal of a swapped-out player. `createAudioPlayer` instances are
   // NOT auto-released (unlike the useAudioPlayer hook), so a discarded player
@@ -242,8 +273,41 @@ function useAudioChannel(
     // Keep the fallback disposal effect's bookkeeping in sync so it never tries
     // to remove `outgoing` a second time on the next render.
     prevPlayerRef.current = next;
+    // Any fresh load supersedes a coordinator-detached snapshot — callers that
+    // resume from it read the ref BEFORE calling this.
+    setDetachedPosition(null);
     setPlayer(next);
     return next;
+  };
+
+  // Tear down a mid-stream remote player entirely instead of just pausing it.
+  // A paused keepAudioSessionActive player keeps its AVPlayerItem's network
+  // fetch alive, so when ANOTHER channel starts playing, this channel's paused
+  // stream would fight the new one over a weak cellular pipe — the same pipe
+  // contention swapToFreshPlayer fixes within a channel, applied across
+  // channels. Snapshots the position (and the duration, if the stream had
+  // resolved one) first; currentUri stays set, so the UI keeps showing the
+  // track and the next play on this channel rebuilds a fresh player and
+  // resumes from the snapshot.
+  const detachStreamedPlayer = () => {
+    const outgoing = playerRef.current;
+    let positionSec = 0;
+    try {
+      if (isFinite(outgoing.currentTime) && outgoing.currentTime > 0 && !isPlayerAtEnd(outgoing)) {
+        positionSec = outgoing.currentTime;
+      }
+      if (knownDurationRef.current == null && isFinite(outgoing.duration) && outgoing.duration > 0) {
+        knownDurationRef.current = outgoing.duration;
+      }
+    } catch {}
+    try { outgoing.pause(); } catch {}
+    try { outgoing.remove(); } catch {}
+    const dormant = createAudioPlayer(null, PLAYER_OPTIONS);
+    playerRef.current = dormant;
+    resolvedSourceUriRef.current = null;
+    prevPlayerRef.current = dormant;
+    setPlayer(dormant);
+    setDetachedPosition(positionSec);
   };
 
   const getEffectiveDuration = (): number | null => {
@@ -306,7 +370,13 @@ function useAudioChannel(
     ? status.duration
     : knownDurationRef.current;
   const durationKnown = currentUri != null && effectiveDuration != null;
-  const currentTimeSec = currentUri != null && isFinite(status.currentTime) ? status.currentTime : 0;
+  // A coordinator-detached track has no live player (its status reads 0), so
+  // the snapshot keeps the paused position on screen until resume.
+  const currentTimeSec = currentUri == null
+    ? 0
+    : detachedPositionSec != null
+      ? detachedPositionSec
+      : isFinite(status.currentTime) ? status.currentTime : 0;
   const currentTime = formatTime(currentTimeSec * 1000);
   const totalTime = durationKnown ? formatTime(effectiveDuration * 1000) : '--:--';
   const remainingTime = durationKnown
@@ -419,7 +489,11 @@ function useAudioChannel(
       // Pause the outgoing player before swapping in the new one.
       try { playerRef.current.pause(); } catch {}
 
-      const cachedUri = await audioCacheService.getAudioUri(uri);
+      // Cached file when available, remote URL otherwise — a preload must
+      // NEVER trigger a full download (the old getAudioUri path did exactly
+      // that, ungated, so opening a transcript on cellular silently pulled the
+      // whole file and its fetch competed with any active stream for the pipe).
+      const cachedUri = await audioCacheService.getPlayableUri(uri);
       if (operationId !== operationIdRef.current) return;
 
       // Fresh player for the preloaded track (no play() — this is a preload).
@@ -464,9 +538,12 @@ function useAudioChannel(
 
         // A locally-cached track resumes in place: reusing its player is a
         // pure native operation (no fetch, no decode), instant and reliable,
-        // so it never shows the loading spinner.
+        // so it never shows the loading spinner. A coordinator-detached track
+        // has NO live player (resolvedSourceUriRef is null, so it doesn't read
+        // as a remote stream) — it must take the fresh-player path below.
+        const detachedPositionSnapshot = detachedPositionRef.current;
         const sourceIsRemoteStream = isRemoteUri(resolvedSourceUriRef.current ?? '');
-        if (!sourceIsRemoteStream) {
+        if (!sourceIsRemoteStream && detachedPositionSnapshot == null) {
           if (isPlayerAtEnd(p)) {
             await p.seekTo(0);
             if (operationId !== operationIdRef.current) return;
@@ -485,7 +562,11 @@ function useAudioChannel(
         // fix removed, which also applies to a *second play of the same*
         // streamed track. Rebuild a fresh player (re-resolving in case it has
         // since cached), preserving position for a mid-stream resume.
-        const resumePositionSec = isPlayerAtEnd(p) ? 0 : Math.max(0, p.currentTime);
+        // Detached tracks resume from the snapshot taken at teardown — the
+        // dormant player's own currentTime is 0.
+        const resumePositionSec = detachedPositionSnapshot != null
+          ? detachedPositionSnapshot
+          : isPlayerAtEnd(p) ? 0 : Math.max(0, p.currentTime);
         setIsLoading(true);
         setLoadingUri(uri);
         try { p.pause(); } catch {}
@@ -640,6 +721,7 @@ function useAudioChannel(
     clearPendingPlayConfirmation();
     clearSlowConnection();
     setDownloadProgress(null);
+    setDetachedPosition(null);
     try {
       if (playerRef.current.playing) {
         playerRef.current.pause();
@@ -662,14 +744,27 @@ function useAudioChannel(
   };
 
   const play = async () => {
+    if (!currentUri) {
+      return;
+    }
+
+    // A streamed track — or one whose player the cross-channel coordinator
+    // detached — must NOT resume on its existing player in place: that's the
+    // reused-player `.waitingToPlayAtSpecifiedRate` stall the same-track
+    // branch of loadAndPlay exists to avoid (and a detached track has no live
+    // player at all). Delegate there; it rebuilds a fresh player and resumes
+    // from the preserved position. Only locally-cached tracks keep the cheap
+    // in-place resume below.
+    if (isRemoteUri(resolvedSourceUriRef.current ?? '') || detachedPositionRef.current != null) {
+      await loadAndPlay(currentUri, knownDurationRef.current ?? undefined);
+      return;
+    }
+
     const operationId = ++operationIdRef.current;
     try {
-      if (!currentUri) {
-        return;
-      }
-
-      // Resuming an already-loaded track is a pure native operation (no
-      // fetch, no decode) — never show the loading spinner for it.
+      // Resuming an already-loaded local track is a pure native operation (no
+      // fetch, no decode) — never show the loading spinner for it, and the
+      // awaited seekTo(0) at track end is instant/safe on a local file.
       const p = playerRef.current;
       if (!p.playing) {
         if (isPlayerAtEnd(p)) {
@@ -717,9 +812,20 @@ function useAudioChannel(
 
   const pauseFromCoordinator = useCallback(() => {
     operationIdRef.current++;
-    try {
-      playerRef.current.pause();
-    } catch {}
+    // Another channel is starting playback. For a mid-stream remote source,
+    // pausing is not enough: a paused keepAudioSessionActive player keeps its
+    // network fetch alive, and it would fight the other channel's fresh stream
+    // over a weak cellular pipe (the cross-channel version of the heavy-audio
+    // hang). Tear the streamed player down instead, snapshotting the position
+    // so resuming this channel rebuilds a fresh player at the right spot.
+    // Local cached playback keeps the plain in-place pause.
+    if (isRemoteUri(resolvedSourceUriRef.current ?? '')) {
+      detachStreamedPlayer();
+    } else {
+      try {
+        playerRef.current.pause();
+      } catch {}
+    }
     clearPendingPlayConfirmation();
     clearSlowConnection();
     setIsLoading(false);
@@ -737,8 +843,15 @@ function useAudioChannel(
       setIsLoading(false);
       setLoadingUri(null);
 
-      if (currentUri) {
-        await playerRef.current.seekTo(0);
+      if (detachedPositionRef.current != null) {
+        // Detached track: no live player to seek — reset the snapshot.
+        setDetachedPosition(0);
+      } else if (currentUri) {
+        // Best-effort, NOT awaited: seeking a streamed source into an
+        // unbuffered offset can hang indefinitely on weak cellular, and
+        // useAudioPlaylist awaits stop() before loading the next track — an
+        // awaited hang here would block switching tracks entirely.
+        playerRef.current.seekTo(0).catch(() => {});
       }
     } catch (error) {
     }
@@ -750,12 +863,20 @@ function useAudioChannel(
         return;
       }
 
+      // Detached track (no live player): adjust the resume snapshot instead.
+      if (detachedPositionRef.current != null) {
+        const effectiveDurationSec = getEffectiveDuration();
+        const target = detachedPositionRef.current + seconds;
+        setDetachedPosition(effectiveDurationSec != null ? Math.min(target, effectiveDurationSec) : target);
+        return;
+      }
+
       const p = playerRef.current;
       const effectiveDurationSec = getEffectiveDuration();
       const newPosition = effectiveDurationSec != null
         ? Math.min(p.currentTime + seconds, effectiveDurationSec)
         : p.currentTime + seconds;
-      await p.seekTo(newPosition);
+      await seekWithCap(p, newPosition);
     } catch (error) {
     }
   };
@@ -766,9 +887,15 @@ function useAudioChannel(
         return;
       }
 
+      // Detached track (no live player): adjust the resume snapshot instead.
+      if (detachedPositionRef.current != null) {
+        setDetachedPosition(Math.max(detachedPositionRef.current - seconds, 0));
+        return;
+      }
+
       const p = playerRef.current;
       const newPosition = Math.max(p.currentTime - seconds, 0);
-      await p.seekTo(newPosition);
+      await seekWithCap(p, newPosition);
     } catch (error) {
     }
   };
@@ -782,7 +909,14 @@ function useAudioChannel(
 
       const clampedProgress = Math.max(0, Math.min(1, progressValue));
       const newPosition = clampedProgress * effectiveDurationSec;
-      await playerRef.current.seekTo(newPosition);
+
+      // Detached track (no live player): adjust the resume snapshot instead.
+      if (detachedPositionRef.current != null) {
+        setDetachedPosition(newPosition);
+        return;
+      }
+
+      await seekWithCap(playerRef.current, newPosition);
     } catch (error) {
     }
   };
@@ -831,7 +965,9 @@ function useAudioChannel(
   const getPlaybackSnapshot = useCallback((): PlaybackSnapshot => {
     try {
       const p = playerRef.current;
-      const pos = p.currentTime;
+      // A detached track's live player is dormant (position 0) — report the
+      // snapshot it will actually resume from.
+      const pos = detachedPositionRef.current ?? p.currentTime;
       const effectiveDurationSec = getEffectiveDuration();
       return {
         positionSec: isFinite(pos) && pos >= 0 ? pos : 0,

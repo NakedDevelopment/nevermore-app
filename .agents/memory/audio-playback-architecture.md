@@ -75,6 +75,62 @@ non-awaited-seek fix that attempt lacked (which is why that attempt still left p
 hanging). The slow-connection prompt / user-download button stay as they are — they are NOT the
 fix for this and were intentionally not expanded here.
 
+## Free the pipe ACROSS channels: coordinator detaches a streamed player (July 2026)
+
+The eager-teardown fix above only frees the pipe *within* a channel. The provider has three
+channels (main, reflection, fortyday), each owning its own player, and the one-stream guard
+(`onPlayStart` → `pauseOthers` → `pauseFromCoordinator`) used to merely *pause* the other
+channels — but per the root cause above, a paused `keepAudioSessionActive` player keeps its
+network fetch alive. So playing a heavy streamed track on `main`, then starting a track on
+`fortyday`, left main's paused player still pulling its heavy file, fighting the new stream
+over the weak cellular pipe — the cross-channel version of the same hang.
+
+Fix: `pauseFromCoordinator` now checks `resolvedSourceUriRef`. A **local** cached source keeps
+the plain in-place pause. A **remote streamed** source is *detached* via
+`detachStreamedPlayer()`: snapshot `currentTime` into `detachedPositionRef` (+ mirror state
+`detachedPositionSec` for the progress display) and the resolved `duration` into
+`knownDurationRef` if unset, then `remove()` the player and swap in a dormant
+`createAudioPlayer(null)`. `currentUri` stays set, so the UI keeps showing the track at its
+paused position. A detached track has NO live player and `resolvedSourceUriRef` is null, so:
+
+- `loadAndPlay`'s same-track branch checks `detachedPositionRef` *in addition to*
+  `sourceIsRemoteStream` and takes the fresh-player path, resuming from the snapshot (a
+  dormant player's own `currentTime` is 0 — never read position from it).
+- `play()` delegates streamed OR detached resumes to `loadAndPlay(currentUri, knownDuration)`
+  instead of resuming in place. This also closed a separate hole: `play()`/`togglePlayPause`
+  (Transcript, `useAudioPlaylist` same-track resume) used to `p.play()` a streamed player in
+  place — the documented `.waitingToPlayAtSpecifiedRate` reused-player stall.
+- `seekTo`/`seekForward`/`seekBackward` adjust the snapshot when detached (no live player to
+  seek). `stop()` resets the snapshot to 0. `swapToFreshPlayer`/`unloadAudio` clear it —
+  every resume path reads the snapshot BEFORE calling `swapToFreshPlayer`.
+
+**Do NOT revert `pauseFromCoordinator` to a plain `pause()` for remote sources**, and do NOT
+let any code read a resume position off the dormant player.
+
+## Bounded seek awaits (`seekWithCap`) + non-awaited housekeeping seeks (July 2026)
+
+Awaiting `seekTo` into an unbuffered remote offset can hang indefinitely (see above). Beyond
+the resume-branch fix, two more await sites were bounded:
+
+- `seekForward`/`seekBackward`/`seekTo` await through `seekWithCap` (3s cap; the native seek
+  keeps going in the background and lands whenever it can). This matters because callers
+  sequence work behind these awaits — e.g. Transcript awaits `seekTo(initialPosition)` before
+  calling `play()` to resume; an unbounded hang there silently killed the resume.
+- `stop()` no longer awaits its reset `seekTo(0)` (fire-and-forget with `.catch`) —
+  `useAudioPlaylist.handleAudioSelect` awaits `stop()` before loading the next track, so a
+  hanging reset-seek would have blocked switching exercises entirely.
+
+## `loadAudio` (preload) never downloads — it resolves via `getPlayableUri` (July 2026)
+
+`loadAudio` used to resolve through `audioCacheService.getAudioUri`, which fell through to a
+full, ungated `downloadAndCache` for uncached files — so opening the Transcript on cellular
+silently downloaded the entire (possibly heavy) file with no progress UI, its fetch competing
+with any active stream for the pipe. It now resolves via `getPlayableUri` (cached file when
+available, remote URL otherwise) like every other load path; an uncached preload simply holds
+the remote URL and buffers on play. `getAudioUri` was removed from `audioCache.service.ts` —
+the ONLY paths that pull a full file are `warmAudio` (WiFi-gated) and `downloadForPlayback`
+(user-initiated, shows progress). Do NOT reintroduce an ungated full-download resolve path.
+
 ## Convention: primary single-track play handlers
 
 Every screen's play/pause button for a primary single audio track (e.g. FortyDay challenge,
@@ -272,8 +328,9 @@ full-file download (all three callers: the two mount prefetches below plus
 `loadAndPlay`'s post-play warm) — checks `Network.getNetworkStateAsync()` via
 `isBackgroundDownloadAllowed()` and **returns early on CELLULAR (or no
 connection)**, before `downloadAndCache`. Already-cached files are served first
-and are unaffected. `getAudioUri`/`loadAudio` (user-initiated foreground loads)
-are intentionally NOT gated.
+and are unaffected. `downloadForPlayback` (user-initiated, with progress UI) is
+intentionally NOT gated; `loadAudio` no longer downloads at all (see the
+`getPlayableUri` section above).
 
 **Why (July 2026):** even after prefetch was scoped down, the single heaviest
 file ("Internal Thoughts" recovery audio) still hung indefinitely on weak

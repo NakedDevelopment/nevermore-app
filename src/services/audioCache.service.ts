@@ -239,42 +239,6 @@ class AudioCacheService {
   }
 
   /**
-   * Get local path for cached audio, or download and cache if not available
-   * @returns Local file URI to use for playback
-   */
-  async getAudioUri(remoteUrl: string): Promise<string> {
-    await this.init();
-
-    if (!remoteUrl || remoteUrl.trim() === '') {
-      return remoteUrl;
-    }
-
-    // Check if already a local file
-    if (remoteUrl.startsWith('file://') || remoteUrl.startsWith(FileSystem.documentDirectory || '') || remoteUrl.startsWith(FileSystem.cacheDirectory || '')) {
-      return remoteUrl;
-    }
-
-    const hash = this.hashUrl(remoteUrl);
-    const cachedEntry = this.cacheIndex[hash];
-
-    // Check if cached and file exists
-    if (cachedEntry) {
-      try {
-        const fileInfo = await FileSystem.getInfoAsync(cachedEntry.localPath);
-        if (fileInfo.exists) {
-          console.log('Using cached audio:', cachedEntry.localPath);
-          return cachedEntry.localPath;
-        }
-      } catch {
-        // File doesn't exist, will re-download
-      }
-    }
-
-    // Download and cache
-    return this.downloadAndCache(remoteUrl, hash);
-  }
-
-  /**
    * Return a cached file immediately when available. When the file is not
    * cached yet, return the remote URL so playback can stream right away.
    */
@@ -426,7 +390,7 @@ class AudioCacheService {
 
       // createDownloadResumable (not downloadAsync) so we can report progress
       // to a user-facing "Downloading X%" indicator. The callback is a no-op
-      // when onProgress is omitted (background warm / getAudioUri paths).
+      // when onProgress is omitted (background warm path).
       const resumable = FileSystem.createDownloadResumable(
         remoteUrl,
         localPath,

@@ -1,8 +1,8 @@
-# TestFlight — Build 99 (iOS)
+# TestFlight — Build 100 (iOS)
 
-**Date:** 2026-07-10
+**Date:** 2026-07-16
 **Branch:** `master`
-**App version:** see `app.json` (`expo.version`) · **iOS build number:** `99`
+**App version:** see `app.json` (`expo.version`) · **iOS build number:** `100`
 **Bundle ID:** `com.nevermore.app` · **ASC App ID:** `6754863979` · **Apple Team:** `C5DF3CP9LJ`
 
 Build kicked off with:
@@ -11,69 +11,79 @@ Build kicked off with:
 eas build --platform ios --profile production --non-interactive --auto-submit
 ```
 
-`production` profile has `autoIncrement: true`, so EAS bumped the iOS build number
-`98 → 99` automatically at build time and `--auto-submit` sends it to TestFlight
+`production` profile has `autoIncrement: true`, so EAS bumps the iOS build number
+`99 → 100` automatically at build time and `--auto-submit` sends it to TestFlight
 after the cloud build finishes.
 
 ---
 
 ## What's in this build
 
-### 1. Onboarding: trial screen goes straight to home (no paywall)
-`src/navigation/screens/TrialWelcome.tsx`
-- Removed the **"Not now"** secondary button.
-- **"Start my 3 free days"** now navigates directly to `HOME_TABS` — the paywall
-  (Subscription screen) is no longer shown during onboarding.
-- The trial still starts server-side (`startTrial`) and `completeOnboarding()` still runs.
-- Monetization is not dead-ended: the Subscription screen is still reachable from the
-  **Drawer menu** and is force-shown by the **TrialExpired** hard-block when the trial ends.
+All changes extend the build-99 heavy-audio-on-cellular fix to the places the same
+root cause (a paused `keepAudioSessionActive` player keeps its network fetch alive,
+starving a fresh stream on a weak cellular pipe) was still live.
+Details: `.agents/memory/audio-playback-architecture.md`.
 
-### 2. Audio fix: heavy streamed track resume/return hang (cellular)
+### 1. Cross-channel pipe contention (the main fix)
 `src/contexts/AudioPlayerProvider.tsx`
 
-**Reported bug:** First play of a heavy streamed track (e.g. "Internal Thoughts") on
-cellular works, but (a) pausing then playing again, or (b) switching to other audio and
-coming back, hangs on the loading spinner forever and never starts.
+Build 99 freed the pipe *within* a channel, but there are three channels (main,
+reflection, fortyday), each with its own player — and the one-stream coordinator only
+*paused* the others. Playing a heavy streamed track (e.g. "Internal Thoughts") on one
+channel and then starting audio on another left the first channel's paused player
+still fetching the heavy file, fighting the new stream over the pipe → hang.
 
-**Root cause:** A `keepAudioSessionActive` player keeps its `AVPlayerItem` and the live
-network fetch of its remote URL alive even after `pause()`. The outgoing player was only
-paused and removed later in a post-render effect, so it was still fetching the same heavy
-file when the fresh player called `play()` — the two streams fought over the weak cellular
-pipe and the fresh one never buffered. The return-to-track case (no seek, plays from 0,
-still hung) confirmed contention — not the seek — is the cause.
+`pauseFromCoordinator` now **detaches** a streamed player instead of pausing it:
+snapshots the position (and duration) → `remove()`s the player → swaps in a dormant
+one. The UI keeps showing the track at its paused position; resuming rebuilds a fresh
+player from the snapshot. Local cached playback keeps the plain in-place pause.
 
-**Fix:**
-- `swapToFreshPlayer` now `remove()`s the outgoing player **synchronously, before** creating
-  the fresh one, and keeps `prevPlayerRef` in sync (the post-render disposal effect becomes
-  a safety-net no-op).
-- The pause→resume branch calls `play()` **first**, then does a best-effort non-awaited
-  `seekTo(pos)`, so an unbufferable cold-remote seek can no longer hang playback either.
+### 2. `play()`/`togglePlayPause` no longer resume a streamed player in place
+Delegates to `loadAndPlay`'s fresh-player path when the source is remote (or
+detached) — closes the documented `.waitingToPlayAtSpecifiedRate` reused-player stall
+on the Transcript screen and reflection-playlist same-track resume.
 
-**Intentionally NOT changed:** the slow-connection warning and the download button were left
-as-is (not expanded) — per request, they are not the fix for this.
+### 3. Preloads never download on cellular
+`loadAudio` resolves via `getPlayableUri` (cached-or-stream) instead of `getAudioUri`,
+which silently downloaded the entire file with no WiFi gate and no progress UI (e.g.
+opening a Transcript on cellular). `getAudioUri` removed from
+`src/services/audioCache.service.ts` — the only full-download paths left are
+`warmAudio` (WiFi-gated) and `downloadForPlayback` (user-initiated, with progress).
 
-### Difference from the abandoned build-97 attempt
-Build 97 also freed the pipe but *kept* the awaited cold-seek before `play()`, so it would
-still have hung on pause→resume (likely why "95 felt better"). This build adds the
-non-awaited-seek fix that attempt lacked.
+### 4. No more unbounded seek awaits
+- `stop()`'s reset `seekTo(0)` is fire-and-forget — a hang there blocked
+  `useAudioPlaylist` from ever switching to the next exercise.
+- `seekTo`/`seekForward`/`seekBackward` await through `seekWithCap` (3s cap; the
+  native seek still lands in the background) — an unbounded remote seek await could
+  silently kill Transcript's resume-at-position flow.
+
+**Unchanged, per standing convention:** the 45s slow-connection prompt and the
+user-initiated download button; no automatic downloads were added anywhere.
 
 ---
 
 ## Commits in this build
 
-- `e55dfbb` Fix heavy-audio resume/return hang: free the pipe before the fresh player's play()
-- `900147a` Onboarding trial screen goes straight to home; revert build-97 audio changes
+- `5e8c45c` Free the cellular pipe across channels; fix streamed resume, preload, and seek hangs
 
 ---
 
 ## Testing checklist (real device on cellular — cannot be verified in simulator/WiFi)
 
+Regression (build-99 fixes, must still pass):
 - [ ] First play of "Internal Thoughts" on cellular starts.
-- [ ] Pause, then play again → resumes (may re-buffer / restart from start, but does NOT hang).
-- [ ] Play heavy audio → switch to another track → return to heavy audio → plays (no hang).
-- [ ] Onboarding: "Start my 3 free days" lands on Home with no paywall; "Not now" is gone.
-- [ ] Trial access works after onboarding; Subscription still reachable from Drawer menu.
-- [ ] After trial expiry, TrialExpired hard-block routes to Subscription.
+- [ ] Pause, then play again → resumes (may re-buffer, but does NOT hang).
+- [ ] Play heavy audio → switch to another track on the SAME screen → return → plays.
+
+New in this build:
+- [ ] Play "Internal Thoughts" (TemptationDetails) → start a FortyDay day audio →
+      it starts (previously could hang: cross-channel contention).
+- [ ] …then go back and resume "Internal Thoughts" → resumes from its paused position.
+- [ ] Play a streamed reflection exercise → pause via the exercise row → tap it again
+      → resumes without hanging.
+- [ ] Open Transcript for a streamed track on cellular → opens instantly (no silent
+      full download), resumes at position; play/pause from the transcript works.
+- [ ] Switching between reflection exercises is never blocked (stop-seek fix).
 
 ---
 
