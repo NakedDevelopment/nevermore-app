@@ -1,19 +1,25 @@
-# TestFlight — Build 100 (iOS)
+# TestFlight — Build 100 (iOS) + Android build (versionCode 6)
 
 **Date:** 2026-07-16
 **Branch:** `master`
-**App version:** see `app.json` (`expo.version`) · **iOS build number:** `100`
+**App version:** see `app.json` (`expo.version`, 1.0.2) · **iOS build number:** `100` · **Android versionCode:** `6`
 **Bundle ID:** `com.nevermore.app` · **ASC App ID:** `6754863979` · **Apple Team:** `C5DF3CP9LJ`
 
-Build kicked off with:
+Builds kicked off with:
 
 ```bash
-eas build --platform ios --profile production --non-interactive --auto-submit
+eas build --platform ios --profile production --non-interactive --auto-submit --no-wait
+eas build --platform android --profile production --non-interactive --no-wait
 ```
 
 `production` profile has `autoIncrement: true`, so EAS bumps the iOS build number
-`99 → 100` automatically at build time and `--auto-submit` sends it to TestFlight
-after the cloud build finishes.
+`99 → 100` and the Android versionCode `5 → 6` automatically at build time (the two
+counters are independent — what matters is both builds come from the same commit).
+`--auto-submit` sends the iOS build to TestFlight after the cloud build finishes.
+**Android is built WITHOUT auto-submit**: `./play-service-account.json` (referenced by
+`eas.json`'s submit profile) is not present in the repo, so the AAB must be uploaded
+to the Play Console manually (or the service-account key added before a future
+`eas submit -p android`).
 
 ---
 
@@ -64,7 +70,7 @@ user-initiated download button; no automatic downloads were added anywhere.
 
 ## Commits in this build
 
-- `5e8c45c` Free the cellular pipe across channels; fix streamed resume, preload, and seek hangs
+- `53e6093` Free the cellular pipe across channels; fix streamed resume, preload, and seek hangs
 
 ---
 
@@ -91,6 +97,8 @@ New in this build:
 
 - [x] Code committed and pushed to `master`
 - [x] `eas build --platform ios --profile production --auto-submit` started
-- [ ] Cloud build finished
+- [x] `eas build --platform android --profile production` started (no auto-submit — see above)
+- [ ] iOS cloud build finished
 - [ ] Submitted to TestFlight / processing in App Store Connect
+- [ ] Android cloud build finished / AAB uploaded to Play Console manually
 - [ ] Verified on device (see checklist above)
