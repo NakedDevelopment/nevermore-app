@@ -98,7 +98,7 @@ New in this build:
 - [x] Code committed and pushed to `master`
 - [x] `eas build --platform ios --profile production --auto-submit` started
 - [x] `eas build --platform android --profile production` started (no auto-submit — see above)
-- [ ] iOS cloud build finished
+- [x] iOS cloud build finished (build 100, finished 2026-07-16 21:57 UTC, ~7 min)
 - [ ] Submitted to TestFlight / processing in App Store Connect
 - [ ] Android cloud build finished / AAB uploaded to Play Console manually
 - [ ] Verified on device (see checklist above)
