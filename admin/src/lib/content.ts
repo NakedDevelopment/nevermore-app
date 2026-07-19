@@ -7,6 +7,7 @@ import {
   getConfiguredMaxUploadBytes,
 } from './uploadLimits';
 import { getAudioDurationSec, getAudioDurationsSec } from './audioDuration';
+import { ensureAudioFastStart } from './audioFastStart';
 
 const DATABASE_ID = import.meta.env.VITE_APPWRITE_DATABASE_ID || '';
 const CONTENT_COLLECTION_ID = import.meta.env.VITE_APPWRITE_CONTENT_COLLECTION_ID || 'content';
@@ -108,12 +109,19 @@ export async function uploadFile(
   try {
     // Create a unique file ID
     const fileId = ID.unique();
-    
+
+    // Fix up MP4-family audio (m4a/mp4) whose metadata atom is at the end of
+    // the file instead of the front, which causes the mobile app's streamed
+    // playback to misjudge duration and restart mid-track. No-op for
+    // non-audio files and already-optimized audio; falls back to the
+    // original file if the fix can't be applied for any reason.
+    const uploadableFile = await ensureAudioFastStart(file);
+
     // Upload file to storage
     const response = await storage.createFile({
       bucketId,
       fileId,
-      file
+      file: uploadableFile
     });
     
     // Get the file URL using Appwrite Storage API

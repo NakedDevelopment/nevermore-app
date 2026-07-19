@@ -10,6 +10,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@ffmpeg/ffmpeg": "^0.12.15",
+    "@ffmpeg/util": "^0.12.2",
     "@tailwindcss/vite": "^4.1.16",
     "@uiw/react-md-editor": "^4.0.8",
     "appwrite": "^21.4.0",

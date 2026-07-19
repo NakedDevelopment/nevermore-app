@@ -16,6 +16,7 @@ import { CreateTemptation } from '../pages/CreateTemptation';
 import { Settings } from '../pages/Settings';
 import { TermsAndPrivacy } from '../pages/TermsAndPrivacy';
 import { DeepLinkRedirect } from '../pages/DeepLinkRedirect';
+import { DeleteAccount } from '../pages/DeleteAccount';
 
 export const router = createBrowserRouter([
   {
@@ -77,6 +78,10 @@ export const router = createBrowserRouter([
   {
     path: '/invite',
     element: <DeepLinkRedirect />,
+  },
+  {
+    path: '/delete-account',
+    element: <DeleteAccount />,
   },
   {
     path: '/dashboard',
