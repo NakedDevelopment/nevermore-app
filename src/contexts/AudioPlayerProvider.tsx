@@ -450,6 +450,35 @@ function useAudioChannel(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status]);
 
+  // Resolve a playback URI to a LOCAL file, downloading the full file first
+  // (with progress) when it isn't cached yet. Streaming uncached audio was
+  // abandoned deliberately (July 2026): Appwrite Storage intermittently
+  // answers a mid-file Range request on a "cold" file with HTTP 200 + the
+  // whole file from byte 0 while still advertising `accept-ranges: bytes`,
+  // which makes the native player decode start-of-file audio at a mid-track
+  // position — heard as the track restarting from scratch while the progress
+  // bar keeps advancing. Playing only fully-downloaded files sidesteps their
+  // range handling entirely. If the download fails, downloadForPlayback
+  // returns the remote URL and playback degrades to the old streaming
+  // behavior (slow-connection prompt included) rather than failing outright.
+  const resolveToLocalFile = async (uri: string, operationId: number): Promise<string> => {
+    const playableUri = await audioCacheService.getPlayableUri(uri);
+    if (!isRemoteUri(playableUri)) return playableUri;
+    if (operationId !== operationIdRef.current) return playableUri;
+    setDownloadProgress(0);
+    try {
+      return await audioCacheService.downloadForPlayback(uri, (fraction) => {
+        if (operationId === operationIdRef.current) {
+          setDownloadProgress(fraction);
+        }
+      });
+    } finally {
+      if (operationId === operationIdRef.current) {
+        setDownloadProgress(null);
+      }
+    }
+  };
+
   const playResolvedSource = async (
     uri: string,
     resolvedUri: string,
@@ -554,14 +583,15 @@ function useAudioChannel(
           return;
         }
 
-        // Streamed track (e.g. the heavy files on cellular, which never cache
-        // — warmAudio is WiFi-only): do NOT reuse this player. An AVPlayer that
-        // has already streamed a large remote file accumulates state and gets
-        // stuck in `.waitingToPlayAtSpecifiedRate` when replayed/resumed on
-        // cellular — the exact reused-player stall the per-track fresh-player
-        // fix removed, which also applies to a *second play of the same*
-        // streamed track. Rebuild a fresh player (re-resolving in case it has
-        // since cached), preserving position for a mid-stream resume.
+        // Streamed track (only possible when a download-first resolve failed
+        // and playback fell back to the remote URL): do NOT reuse this player.
+        // An AVPlayer that has already streamed a large remote file
+        // accumulates state and gets stuck in `.waitingToPlayAtSpecifiedRate`
+        // when replayed/resumed on cellular — the exact reused-player stall
+        // the per-track fresh-player fix removed, which also applies to a
+        // *second play of the same* streamed track. Rebuild a fresh player
+        // (re-resolving download-first, so the resume usually lands on a
+        // local file this time), preserving position for the resume.
         // Detached tracks resume from the snapshot taken at teardown — the
         // dormant player's own currentTime is 0.
         const resumePositionSec = detachedPositionSnapshot != null
@@ -571,7 +601,11 @@ function useAudioChannel(
         setLoadingUri(uri);
         try { p.pause(); } catch {}
 
-        const playableUri = await audioCacheService.getPlayableUri(uri);
+        // Download-first (see resolveToLocalFile): a resumed track that isn't
+        // cached yet is pulled in full before playing, so the resume seek
+        // lands on a local file (instant, reliable) instead of an unbuffered
+        // remote offset.
+        const playableUri = await resolveToLocalFile(uri, operationId);
         if (operationId !== operationIdRef.current) return;
 
         const fresh = swapToFreshPlayer(playableUri);
@@ -605,7 +639,7 @@ function useAudioChannel(
 
       try { playerRef.current.pause(); } catch {}
 
-      const playableUri = await audioCacheService.getPlayableUri(uri);
+      const playableUri = await resolveToLocalFile(uri, operationId);
       if (operationId !== operationIdRef.current) return;
 
       await playResolvedSource(uri, playableUri, operationId);
@@ -617,13 +651,11 @@ function useAudioChannel(
       if (isRemoteUri(playableUri)) armSlowConnection(operationId);
 
       if (isRemoteUri(uri) && playableUri === uri) {
-        // Playing a not-yet-cached remote track directly: warm the cache in
-        // the background (this is also what gives the file its correct
-        // extension via magic-byte sniffing, so a future play gets working
-        // duration/seek metadata) without blocking or interrupting the
-        // playback that already started. warmAudio self-gates to unmetered
-        // connections, so on cellular this is a no-op and the streaming fetch
-        // keeps the whole pipe (crucial for the heaviest files on a weak link).
+        // Only reachable when the download-first resolve FAILED and we fell
+        // back to streaming the remote URL: retry the cache in the background
+        // so a future play gets a local file. warmAudio self-gates to
+        // unmetered connections, so on cellular this is a no-op and the
+        // fallback streaming fetch keeps the whole pipe.
         // Do NOT add a "verify the stream is healthy, else redownload and swap
         // the source" step here — see
         // .agents/memory/audio-playback-architecture.md for why that was
@@ -796,6 +828,10 @@ function useAudioChannel(
     // stuck on its loading spinner after a fast pause during a play attempt.
     clearPendingPlayConfirmation();
     clearSlowConnection();
+    // A download-first resolve cancelled mid-flight can't clear its own
+    // progress (its finally is gated on still being the current operation),
+    // so clear it here or the "Downloading X%" indicator freezes on screen.
+    setDownloadProgress(null);
     setIsLoading(false);
     setLoadingUri(null);
     try {
@@ -828,6 +864,7 @@ function useAudioChannel(
     }
     clearPendingPlayConfirmation();
     clearSlowConnection();
+    setDownloadProgress(null);
     setIsLoading(false);
     setLoadingUri(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -837,6 +874,7 @@ function useAudioChannel(
     operationIdRef.current++;
     clearPendingPlayConfirmation();
     clearSlowConnection();
+    setDownloadProgress(null);
     try {
       // Always try to pause, regardless of currentUri state
       playerRef.current.pause();
