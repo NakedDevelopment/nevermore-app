@@ -22,6 +22,15 @@ interface CacheIndex {
   [urlHash: string]: CacheEntry;
 }
 
+// A cold Appwrite Storage file serves the FIRST byte-range request it sees with
+// `HTTP 200 + the whole file from byte 0` (header `x-debug-fallback: true`) while
+// still advertising `accept-ranges: bytes`; every subsequent request to that now-
+// warm file returns a correct `206`. A cheap throwaway request spends that one-shot
+// fallback so the native player's real requests all get proper ranges — see
+// `primeRangeSupport`. These bound how often we re-prime and how long we wait.
+const PRIME_TTL_MS = 60 * 1000;
+const PRIME_TIMEOUT_MS = 5000;
+
 /**
  * Service for caching audio files locally
  * Downloads audio once and serves from local storage on subsequent plays
@@ -31,6 +40,10 @@ class AudioCacheService {
   private initialized = false;
   private initPromise: Promise<void> | null = null;
   private downloadPromises: Partial<Record<string, Promise<string>>> = {};
+  // remoteUrl -> timestamp of the last successful prime (see primeRangeSupport)
+  private primedAt: Map<string, number> = new Map();
+  // remoteUrl -> in-flight prime, so concurrent callers share one request
+  private primingInFlight: Map<string, Promise<void>> = new Map();
 
   /**
    * Generate a simple hash from URL for filename
@@ -268,6 +281,72 @@ class AudioCacheService {
     }
 
     return remoteUrl;
+  }
+
+  /**
+   * Spend Appwrite Storage's cold-file range fallback on a throwaway request so
+   * the native player never sees it.
+   *
+   * A "cold" Appwrite file (one not in the server's range cache) answers the
+   * FIRST byte-range request with `HTTP 200 + the entire file from byte 0`
+   * (`x-debug-fallback: true`) instead of a `206`, even though it advertises
+   * `accept-ranges: bytes`. When that bad response lands on the AVPlayer — e.g.
+   * a read-ahead segment or a resume/seek that requests a mid-file range — the
+   * player writes start-of-file audio at a mid-track offset, heard as the track
+   * audibly restarting while the progress bar keeps advancing. This was the
+   * client-reported "restarts at ~2:24" bug.
+   *
+   * Verified against production (2026-07-21): the fallback is a strict one-shot.
+   * A single HEAD (0 bytes downloaded, ~1s) warms the file server-side, after
+   * which every range request — from any client, the warm is shared at the
+   * origin, not a per-client CDN cache — returns a correct `206`. So we fire one
+   * cheap HEAD and await it BEFORE handing the URL to a fresh player; the
+   * player's own requests then all hit a warm file. This is deliberately NOT a
+   * download: on cellular (where the heavy files stream, since `warmAudio` is
+   * WiFi-only) playback starts as fast as plain streaming plus this one HEAD.
+   *
+   * Best-effort and bounded: capped at PRIME_TIMEOUT_MS, never throws, and a
+   * failure/timeout just falls through to streaming (no worse than not priming).
+   * A short PRIME_TTL_MS + in-flight dedup keep rapid resume/seek/replay taps
+   * from re-priming a file that was primed moments ago, so only the first play
+   * of a track pays the HEAD; resumes and seeks within the window are instant.
+   */
+  async primeRangeSupport(remoteUrl: string): Promise<void> {
+    if (!remoteUrl || remoteUrl.trim() === '') return;
+    if (
+      remoteUrl.startsWith('file://') ||
+      remoteUrl.startsWith(FileSystem.documentDirectory || '') ||
+      remoteUrl.startsWith(FileSystem.cacheDirectory || '')
+    ) {
+      return;
+    }
+
+    const last = this.primedAt.get(remoteUrl);
+    if (last != null && Date.now() - last < PRIME_TTL_MS) return;
+
+    const existing = this.primingInFlight.get(remoteUrl);
+    if (existing) return existing;
+
+    const prime = (async () => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), PRIME_TIMEOUT_MS);
+      try {
+        // HEAD warms the server-side range cache without pulling any body. The
+        // response is the 200 fallback itself, which we discard — we only need
+        // the server to have assembled the file so later 206s succeed.
+        await fetch(remoteUrl, { method: 'HEAD', signal: controller.signal });
+        this.primedAt.set(remoteUrl, Date.now());
+      } catch {
+        // Timed out or failed — leave unprimed so a later play retries. Playback
+        // proceeds by streaming regardless; priming only ever helps.
+      } finally {
+        clearTimeout(timer);
+        this.primingInFlight.delete(remoteUrl);
+      }
+    })();
+
+    this.primingInFlight.set(remoteUrl, prime);
+    return prime;
   }
 
   /**

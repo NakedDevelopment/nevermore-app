@@ -258,6 +258,55 @@ around commits `c144036`..`0ad0285` on `codex-fix-subscription-40-day-regression
 removed code, if you need the archaeology). Missing duration is now treated as a purely cosmetic
 condition (see below), never a reason to interrupt playback that's already underway.
 
+## Appwrite cold-file range fallback → mid-track "restart"; fixed by a HEAD prime (July 2026)
+
+Symptom (client screen recording): a streamed track plays normally until ~2:24,
+then **audibly restarts from the beginning while the progress bar keeps counting
+up** (2:25, 2:26, …). NOT the trailing-moov m4a bug (`b3f7dc5`) — production audio
+is genuine, correctly-labeled mp3.
+
+Root cause (reproduced live against production Storage, 2026-07-21): a **cold**
+Appwrite file — one not in the server's range cache — answers the FIRST byte-range
+request it sees with **`HTTP 200` + the entire file from byte 0** (response header
+`x-debug-fallback: true`), *even though it advertises `accept-ranges: bytes`*.
+Every subsequent request to that now-warm file returns a correct `206`. When the
+one-shot 200 fallback lands on the native player mid-stream — an AVPlayer read-
+ahead segment, or a resume/seek that requests a mid-file range — the player writes
+start-of-file audio at a mid-track offset → heard as the restart while currentTime
+advances. Verified facts that drove the fix:
+- The fallback is a strict **one-shot**: a single throwaway request (even a `HEAD`,
+  0 bytes downloaded, ~1s) warms the file; all later range requests then `206`.
+- The warm is **server-side and shared** across clients (`cache-control: private`
+  rules out a per-client CDN cache; curl — which caches nothing — sees the warm
+  from a separate process). Confirmed to persist ≥8 min; `max-age` is 45 days.
+- **Encryption is NOT the trigger** — encrypted and unencrypted files behave
+  identically. It is purely cold-vs-warm.
+- Two near-simultaneous cold requests: the first gets the 200 fallback, the second
+  (arriving microseconds later) already gets `206` — so racing a warm against the
+  player's own request is NOT safe; the warm must complete first.
+
+Fix: `audioCacheService.primeRangeSupport(remoteUrl)` fires one `HEAD` (best-
+effort, capped at `PRIME_TIMEOUT_MS`, never throws) and is **awaited BEFORE a fresh
+player is handed a remote URL**, so the player's own requests all hit a warm file.
+Wired into every remote path in `AudioPlayerProvider.tsx`: `loadAndPlay` fresh-load
+and same-track resume/seek (resume matters most — its first request IS a mid-file
+range), `loadAudio` preload, and `downloadForOffline`'s stream-fallback branch. It
+is a **no-op for a local cached file** (`isRemoteUri` guard), so WiFi (where heavy
+files are already cached via `warmAudio`) pays nothing; only cellular streaming pays
+the ~1s HEAD — exactly where the bug lives and a slightly slower start is fine. A
+short `PRIME_TTL_MS` + in-flight dedup mean only the first play of a track pays the
+HEAD; rapid pause→resume→seek→replay within the window are instant.
+
+**This is the "non-download fix" that replaced the reverted build-103 download-first
+approach** (`95e6570`, reverted in `ef44a97`): the client A/B'd build 100 (fast
+streaming start) vs 103 (download-before-play) on 5G and preferred 100's speed, but
+100 still had the restart bug. Priming keeps 100's streaming speed and kills the
+restart. **Do NOT reintroduce download-before-play**, and do NOT make the prime a
+full download or a non-awaited fire-and-forget (racing the player is unsafe — see
+above). If the prime ever proves insufficient on-device (e.g. a HEAD that doesn't
+warm on some CDN edge), the next escalation is a local caching HTTP proxy (the
+KTVHTTPCache spike, commit `19a78be` / `archchange.md`), not download-first.
+
 ## Extension-less Appwrite URLs → non-finite duration (dead progress bar, but NOT dead seek)
 
 Appwrite Storage "view" URLs carry NO file extension. `audioCache.service.ts`

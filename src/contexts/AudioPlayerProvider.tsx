@@ -496,6 +496,15 @@ function useAudioChannel(
       const cachedUri = await audioCacheService.getPlayableUri(uri);
       if (operationId !== operationIdRef.current) return;
 
+      // Warm Appwrite's cold-file range cache during preload too, so the eager
+      // player's own metadata fetch doesn't trip the byte-0 fallback and the
+      // eventual play is already primed (instant, within the TTL). No-op for a
+      // local cached file. See audioCacheService.primeRangeSupport.
+      if (isRemoteUri(cachedUri)) {
+        await audioCacheService.primeRangeSupport(cachedUri);
+        if (operationId !== operationIdRef.current) return;
+      }
+
       // Fresh player for the preloaded track (no play() — this is a preload).
       const p = swapToFreshPlayer(cachedUri);
       if (operationId !== operationIdRef.current) return;
@@ -574,6 +583,15 @@ function useAudioChannel(
         const playableUri = await audioCacheService.getPlayableUri(uri);
         if (operationId !== operationIdRef.current) return;
 
+        // A resume/seek makes the player's FIRST request a mid-file range, the
+        // exact request Appwrite answers with the byte-0 fallback on a cold file
+        // — so priming here matters most. No-op if primed moments ago (the
+        // common rapid pause→resume) via primeRangeSupport's TTL.
+        if (isRemoteUri(playableUri)) {
+          await audioCacheService.primeRangeSupport(playableUri);
+          if (operationId !== operationIdRef.current) return;
+        }
+
         const fresh = swapToFreshPlayer(playableUri);
         if (operationId !== operationIdRef.current) return;
 
@@ -607,6 +625,16 @@ function useAudioChannel(
 
       const playableUri = await audioCacheService.getPlayableUri(uri);
       if (operationId !== operationIdRef.current) return;
+
+      // Warm Appwrite's cold-file range cache BEFORE the fresh player makes its
+      // first request, so none of the player's requests hit the `200 + whole
+      // file from byte 0` fallback that causes the mid-track restart. No-op for
+      // a local cached file; ~1s HEAD (no download) for a remote stream. See
+      // audioCacheService.primeRangeSupport.
+      if (isRemoteUri(playableUri)) {
+        await audioCacheService.primeRangeSupport(playableUri);
+        if (operationId !== operationIdRef.current) return;
+      }
 
       await playResolvedSource(uri, playableUri, operationId);
       if (operationId !== operationIdRef.current) return;
@@ -685,7 +713,12 @@ function useAudioChannel(
 
       // Play the freshly downloaded local file on a fresh player. (If the
       // download failed, downloadForPlayback returns the remote URL and this
-      // gracefully falls back to streaming.)
+      // gracefully falls back to streaming — prime the range cache in that case
+      // so the fallback stream doesn't hit the byte-0 restart bug either.)
+      if (isRemoteUri(localUri)) {
+        await audioCacheService.primeRangeSupport(localUri);
+        if (operationId !== operationIdRef.current) return;
+      }
       const p = swapToFreshPlayer(localUri);
       if (operationId !== operationIdRef.current) return;
 
