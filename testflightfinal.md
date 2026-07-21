@@ -100,9 +100,12 @@ Regression (previous builds' fixes, must still pass):
 ## Status
 
 - [x] Code committed and pushed to `master`
-- [ ] `eas build --platform ios --profile production --auto-submit` started
-- [ ] `eas build --platform android --profile production` started
-- [ ] iOS cloud build finished (build 103)
-- [ ] Android cloud build finished (versionCode 9)
+- [x] `eas build --platform ios --profile production --auto-submit` started
+- [x] `eas build --platform android --profile production` started
+- [x] iOS cloud build finished (build 103, finished 2026-07-20 ~23:52 UTC, ~6 min) —
+      TestFlight submission auto-scheduled:
+      https://expo.dev/accounts/vardvered/projects/nevermore-app/submissions/233c58f2-8246-4d0b-839f-34a81326d39e
+- [x] Android cloud build finished (versionCode 9) — AAB:
+      https://expo.dev/artifacts/eas/2y3-XrG9P4LYkRSpFYol_CD3kSvU4jm4lq_COrZwBMs.aab
 - [ ] AAB uploaded to Play Console manually (no service-account key in repo)
 - [ ] Verified on device (see checklist above)
