@@ -5,37 +5,6 @@ description: How the Nevermore app manages single-track audio playback and the c
 
 # Audio playback session management
 
-## Download-first playback — uncached audio is fully downloaded before playing (July 2026)
-
-**Root cause this exists for:** Appwrite Cloud Storage intermittently ignores HTTP Range
-requests on a "cold" file — verified 2026-07-20 by requesting `Range: bytes=3456000-3456999`
-against a production `/view` URL and receiving **HTTP 200 + the entire file from byte 0**
-(with `x-debug-fallback: true` in the response) while the server still advertised
-`accept-ranges: bytes`; the identical request moments later returned a correct 206. Reproduced
-on two different files (both stored `encryption: true`, chunked). When that happens to the
-native player's mid-stream range request, it decodes start-of-file audio at a mid-track
-position — the user hears the track restart from scratch while `currentTime` (and the progress
-bar) keeps advancing. Client-reported at ~2:24 into a track. This is NOT the trailing-moov
-m4a bug (commit `b3f7dc5` / `audioFastStart.ts`) — production audio was verified to be genuine
-correctly-labeled mp3; the server, not the file, is at fault.
-
-**The fix:** `resolveToLocalFile(uri, operationId)` in `AudioPlayerProvider.tsx` — used by BOTH
-`loadAndPlay` paths (fresh load and same-track streamed/detached resume). It resolves via
-`getPlayableUri`; if the result is still remote (uncached), it fully downloads via
-`downloadForPlayback` (works on cellular — user tapped play, so this is user-initiated, and the
-bytes are the same ones streaming would have pulled) with `downloadProgress` driving the
-existing "Downloading… X%" UI, then plays the local file. Streaming now happens ONLY as a
-graceful fallback when the download itself fails (`downloadForPlayback` returns the remote URL);
-the slow-connection prompt and `warmAudio` retry still cover that fallback path. `pause()`,
-`stop()`, and `pauseFromCoordinator()` clear `downloadProgress` (a cancelled resolve can't clear
-its own — its `finally` is gated on still being the current operation). `loadAudio` (preload)
-still NEVER downloads.
-
-**Do NOT reintroduce direct streaming of uncached audio as the primary path** — any streamed
-play is exposed to the Appwrite range bug above. If streaming must come back, the storage
-origin has to be fixed/replaced first (Appwrite support ticket, unencrypted bucket, or a real
-CDN in front).
-
 All audio runs through a single central provider (`src/contexts/AudioPlayerProvider.tsx`)
 that owns persistent expo-audio players as named **channels** (main, reflection, fortyday).
 Channels live above navigation so playback survives screen transitions. A global
@@ -158,11 +127,9 @@ full, ungated `downloadAndCache` for uncached files — so opening the Transcrip
 silently downloaded the entire (possibly heavy) file with no progress UI, its fetch competing
 with any active stream for the pipe. It now resolves via `getPlayableUri` (cached file when
 available, remote URL otherwise) like every other load path; an uncached preload simply holds
-the remote URL until play. `getAudioUri` was removed from `audioCache.service.ts` — the ONLY
-paths that pull a full file are `warmAudio` (WiFi-gated) and `downloadForPlayback` (shows
-progress; invoked on user play via `resolveToLocalFile` and by the slow-connection button).
-The distinction that matters: a PRELOAD (`loadAudio`) must never download; a user-initiated
-PLAY (`loadAndPlay`) now always does when uncached — see download-first at the top of this file.
+the remote URL and buffers on play. `getAudioUri` was removed from `audioCache.service.ts` —
+the ONLY paths that pull a full file are `warmAudio` (WiFi-gated) and `downloadForPlayback`
+(user-initiated, shows progress). Do NOT reintroduce an ungated full-download resolve path.
 
 ## Convention: primary single-track play handlers
 
@@ -193,10 +160,9 @@ auto-plays on selection. Single tracks never auto-play.
 
 ## Slow-connection prompt + user-initiated download (July 2026)
 
-**Scope note (late July 2026):** since download-first playback (top of this file), uncached
-audio no longer streams as the primary path — this prompt now only applies to the FALLBACK
-case where the up-front download failed and playback degraded to streaming the remote URL.
-The mechanics below are unchanged and still needed for that case:
+For heavy content on weak cellular the file simply streams (it never background-caches —
+`warmAudio` is WiFi-only), and a weak pipe sometimes never fills the buffer, so playback
+"doesn't start." Rather than fight this automatically, we surface it to the user:
 
 - Each channel arms a **45s slow-connection timer** (`SLOW_CONNECTION_PROMPT_MS`) whenever a
   *fresh streamed* load starts (only when `isRemoteUri(playableUri)` — a local/cached load
