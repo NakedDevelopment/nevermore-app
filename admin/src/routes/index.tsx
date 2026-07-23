@@ -17,6 +17,7 @@ import { Settings } from '../pages/Settings';
 import { TermsAndPrivacy } from '../pages/TermsAndPrivacy';
 import { DeepLinkRedirect } from '../pages/DeepLinkRedirect';
 import { DeleteAccount } from '../pages/DeleteAccount';
+import { Support } from '../pages/Support';
 
 export const router = createBrowserRouter([
   {
@@ -82,6 +83,10 @@ export const router = createBrowserRouter([
   {
     path: '/delete-account',
     element: <DeleteAccount />,
+  },
+  {
+    path: '/support',
+    element: <Support />,
   },
   {
     path: '/dashboard',
