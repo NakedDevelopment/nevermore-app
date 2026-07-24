@@ -14,7 +14,7 @@
     "newArchEnabled": true,
     "scheme": "nevermoreapp",
     "ios": {
-      "supportsTablet": true,
+      "supportsTablet": false,
       "bundleIdentifier": "com.nevermore.app",
       "buildNumber": "104",
       "splash": {
