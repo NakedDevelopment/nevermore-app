@@ -1,0 +1,11 @@
+{
+  "name": "send-invitation-email",
+  "version": "1.0.0",
+  "description": "Sends the Nevermore invitation email via Brevo instead of Appwrite's built-in Magic URL email.",
+  "main": "src/main.js",
+  "type": "commonjs",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "node-appwrite": "^14.0.0"
+  }
+}
