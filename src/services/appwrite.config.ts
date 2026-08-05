@@ -1,4 +1,4 @@
-import { Client, Account, TablesDB, ID } from 'react-native-appwrite';
+import { Client, Account, TablesDB, Functions, ID } from 'react-native-appwrite';
 import {
   APPWRITE_ENDPOINT,
   APPWRITE_PROJECT_ID,
@@ -33,7 +33,6 @@ const appwriteConfig = {
   revenueCatApiKeyAndroid: REVENUECAT_API_KEY_ANDROID || REVENUECAT_API_KEY || '',
 };
 
-
 const client = new Client()
   .setEndpoint(appwriteConfig.endpoint)
   .setProject(appwriteConfig.projectId)
@@ -41,6 +40,7 @@ const client = new Client()
 
 export const account = new Account(client);
 export const tablesDB = new TablesDB(client);
+export const functions = new Functions(client);
 export { ID, client };
 
 export default appwriteConfig;
