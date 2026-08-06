@@ -22,10 +22,15 @@ module.exports = async ({ req, res, log, error }) => {
     return res.json({ success: false, message: 'Email provider is not configured' }, 500);
   }
 
+  const endpoint = process.env.APPWRITE_FUNCTION_API_ENDPOINT;
+  const projectId = process.env.APPWRITE_FUNCTION_PROJECT_ID;
+  const dynamicKey = req.headers['x-appwrite-key'] || process.env.APPWRITE_API_KEY || '';
+  log(`Config check: endpoint=${endpoint} projectId=${projectId} hasDynamicKey=${!!req.headers['x-appwrite-key']} hasStaticKey=${!!process.env.APPWRITE_API_KEY}`);
+
   const client = new Client()
-  .setEndpoint(process.env.APPWRITE_FUNCTION_API_ENDPOINT)
-  .setProject(process.env.APPWRITE_FUNCTION_PROJECT_ID)
-  .setKey(req.headers['x-appwrite-key'] || process.env.APPWRITE_API_KEY || '');
+  .setEndpoint(endpoint)
+  .setProject(projectId)
+  .setKey(dynamicKey);
 
   const users = new Users(client);
 
@@ -39,8 +44,8 @@ module.exports = async ({ req, res, log, error }) => {
       userId = created.$id;
     }
   } catch (err) {
-    error('Failed to find or create invitee user: ' + err.message);
-    return res.json({ success: false, message: 'Failed to prepare invitee account' }, 500);
+    error('Failed to find or create invitee user: ' + err.message + ' | cause: ' + JSON.stringify(err.cause) + ' | code: ' + err.code + ' | type: ' + err.type);
+    return res.json({ success: false, message: 'Failed to prepare invitee account', debug: { message: err.message, cause: err.cause ? String(err.cause) : null, code: err.code, type: err.type } }, 500);
   }
 
   let secret;
