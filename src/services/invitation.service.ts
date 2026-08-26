@@ -1,5 +1,6 @@
 import { ID, Models, Query } from 'react-native-appwrite';
-import { tablesDB, account } from './appwrite.config';
+import { tablesDB, account, functions } from './appwrite.config';
+import appwriteConfig from './appwrite.config';
 import { APPWRITE_DATABASE_ID, APPWRITE_INVITATIONS_COLLECTION_ID } from '@env';
 import { isUnauthorizedError } from './errorHandler';
 import { showAppwriteError } from './notifications';
@@ -57,6 +58,31 @@ class InvitationService {
     return status === 'accepted';
   }
 
+  private async sendInvitationEmail(email: string, deepLink: string): Promise<void> {
+    if (!appwriteConfig.invitationFunctionId) {
+      throw new Error(
+        'APPWRITE_INVITATION_FUNCTION_ID is not configured. Please check your .env file.'
+      );
+    }
+
+    const execution = await functions.createExecution({
+      functionId: appwriteConfig.invitationFunctionId,
+      body: JSON.stringify({ email, deepLink }),
+      async: false,
+    });
+
+    let result: { success?: boolean; message?: string } = {};
+    try {
+      result = execution.responseBody ? JSON.parse(execution.responseBody) : {};
+    } catch {
+      // Fall through to the generic error below.
+    }
+
+    if (execution.responseStatusCode >= 400 || !result.success) {
+      throw new Error(result.message || 'Failed to send invitation email');
+    }
+  }
+
   private validateConfig(): void {
     if (!APPWRITE_DATABASE_ID) {
       throw new Error(
@@ -107,12 +133,8 @@ class InvitationService {
       });
 
       try {
-        await account.createMagicURLToken({
-          userId: ID.unique(),
-          email,
-          url: deepLink,
-        });
-      } catch (magicUrlError: any) {
+        await this.sendInvitationEmail(email, deepLink);
+      } catch (sendError: any) {
         try {
           await tablesDB.deleteRow({
             databaseId: APPWRITE_DATABASE_ID,
@@ -122,7 +144,7 @@ class InvitationService {
         } catch {
           // If cleanup fails, the pending invite can still be removed from Manage Invites.
         }
-        throw new Error(`Failed to create invitation: ${magicUrlError?.message || 'Unknown error'}`);
+        throw new Error(`Failed to create invitation: ${sendError?.message || 'Unknown error'}`);
       }
 
       return {
@@ -228,13 +250,9 @@ class InvitationService {
       const deepLink = `https://nevermore-admin-app-seven.vercel.app/invite?token=${invitationToken}`;
 
       try {
-        await account.createMagicURLToken({
-          userId: ID.unique(),
-          email: invitation.email,
-          url: deepLink,
-        });
-      } catch (magicUrlError: any) {
-        throw new Error(`Failed to resend invitation: ${magicUrlError?.message || 'Unknown error'}`);
+        await this.sendInvitationEmail(invitation.email, deepLink);
+      } catch (sendError: any) {
+        throw new Error(`Failed to resend invitation: ${sendError?.message || 'Unknown error'}`);
       }
 
       const updatedInvitation = await tablesDB.updateRow({

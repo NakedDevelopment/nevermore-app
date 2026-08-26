@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import {
     ActivityIndicator,
     Dimensions,
+    ScrollView,
     StatusBar,
     StyleSheet,
     Text,
@@ -301,7 +302,11 @@ export function Invite() {
                         <View style={styles.headerSpacer} />
                     </View>
 
-                    <View style={styles.content}>
+                    <ScrollView
+                        style={styles.content}
+                        contentContainerStyle={styles.contentContainer}
+                        showsVerticalScrollIndicator={false}
+                    >
                         <Text style={styles.title}>INVITE A LOVED ONE</Text>
 
                         <Text style={styles.description}>
@@ -347,7 +352,7 @@ export function Invite() {
                                 </>
                             )}
                         </View>
-                    </View>
+                    </ScrollView>
 
                     <View style={styles.buttonContainer}>
                         <Button
@@ -402,8 +407,11 @@ const styles = StyleSheet.create({
     },
     content: {
         flex: 1,
+    },
+    contentContainer: {
         paddingHorizontal: 20,
         paddingTop: 20,
+        paddingBottom: 20,
     },
     title: {
         fontSize: 28,

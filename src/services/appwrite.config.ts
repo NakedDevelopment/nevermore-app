@@ -1,4 +1,4 @@
-import { Client, Account, TablesDB, ID } from 'react-native-appwrite';
+import { Client, Account, TablesDB, Functions, ID } from 'react-native-appwrite';
 import {
   APPWRITE_ENDPOINT,
   APPWRITE_PROJECT_ID,
@@ -8,6 +8,7 @@ import {
   APPWRITE_INVITATIONS_COLLECTION_ID,
   APPWRITE_WELCOME_QUOTE_COLLECTION_ID,
   APPWRITE_STORAGE_BUCKET_ID,
+  APPWRITE_INVITATION_FUNCTION_ID,
   APPWRITE_PLATFORM,
   IAP_PRODUCT_ID_MONTHLY,
   IAP_PRODUCT_ID_YEARLY,
@@ -25,6 +26,7 @@ const appwriteConfig = {
   invitationsCollectionId: APPWRITE_INVITATIONS_COLLECTION_ID || '',
   welcomeQuoteCollectionId: APPWRITE_WELCOME_QUOTE_COLLECTION_ID || '',
   storageBucketId: APPWRITE_STORAGE_BUCKET_ID || '',
+  invitationFunctionId: APPWRITE_INVITATION_FUNCTION_ID || '',
   platform: APPWRITE_PLATFORM || '',
   iapProductIdMonthly: IAP_PRODUCT_ID_MONTHLY || '',
   iapProductIdYearly: IAP_PRODUCT_ID_YEARLY || '',
@@ -41,6 +43,7 @@ const client = new Client()
 
 export const account = new Account(client);
 export const tablesDB = new TablesDB(client);
+export const functions = new Functions(client);
 export { ID, client };
 
 export default appwriteConfig;

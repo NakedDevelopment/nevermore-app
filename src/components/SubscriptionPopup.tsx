@@ -19,11 +19,11 @@ import { useSubscriptionStore } from '../store/subscriptionStore';
 
 type PlanType = 'monthly' | 'yearly';
 
-const DISPLAY_PRICES = {
-  monthly: '$13.99',
-  yearly: '$99',
-  yearlyPerMonth: '~$8.25 / month equivalent',
-};
+function getYearlyPerMonthHint(displayPrice: string, price?: number): string | null {
+  if (!price) return null;
+  const currencySymbol = displayPrice.match(/^[^\d]+/)?.[0] || '$';
+  return `~${currencySymbol}${(price / 12).toFixed(2)} / month equivalent`;
+}
 
 interface SubscriptionPopupProps {
   isVisible: boolean;
@@ -45,10 +45,24 @@ export function SubscriptionPopup({
     restorePurchases,
     getRestorePurchaseStatus,
     setError,
+    products,
+    loadProducts,
   } = useSubscriptionStore();
   const markSharedAccessUpgraded = useSharedAccessStore((s) => s.markSharedAccessUpgraded);
 
   const [selectedPlan, setSelectedPlan] = React.useState<PlanType>('monthly');
+
+  useEffect(() => {
+    if (isVisible) {
+      loadProducts();
+    }
+  }, [isVisible, loadProducts]);
+
+  const monthlyPrice = products.monthly?.displayPrice || '—';
+  const yearlyPrice = products.yearly?.displayPrice || '—';
+  const yearlyPerMonthHint = products.yearly
+    ? getYearlyPerMonthHint(products.yearly.displayPrice, products.yearly.price)
+    : null;
 
   const snapPoints = useMemo(() => ['75%'], []);
 
@@ -177,7 +191,7 @@ export function SubscriptionPopup({
             <View style={styles.priceContainer}>
               <Text style={styles.price}>{price}</Text>
               <Text style={styles.priceUnit}>{isYearly ? 'per year' : 'per month'}</Text>
-              {isYearly && <Text style={styles.priceHint}>{DISPLAY_PRICES.yearlyPerMonth}</Text>}
+              {isYearly && yearlyPerMonthHint ? <Text style={styles.priceHint}>{yearlyPerMonthHint}</Text> : null}
             </View>
           </View>
         </View>
@@ -217,8 +231,8 @@ export function SubscriptionPopup({
         </Text>
 
         <View style={styles.plansContainer}>
-          {renderPlanCard('monthly', 'MONTHLY', DISPLAY_PRICES.monthly, selectedPlan === 'monthly')}
-          {renderPlanCard('yearly', 'YEARLY', DISPLAY_PRICES.yearly, selectedPlan === 'yearly')}
+          {renderPlanCard('monthly', 'MONTHLY', monthlyPrice, selectedPlan === 'monthly')}
+          {renderPlanCard('yearly', 'YEARLY', yearlyPrice, selectedPlan === 'yearly')}
         </View>
 
         {error ? (

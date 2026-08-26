@@ -220,6 +220,37 @@ function useAudioChannel(
     setDetachedPositionSec(value);
   };
 
+  // Tracks a seek target that's been issued but not yet confirmed by the
+  // native player. seekForward/seekBackward/seekTo read this instead of
+  // player.currentTime when it's set, so two rapid taps compose correctly
+  // even though a native seek (especially on Android) can take a while to
+  // land — without it, a second tap's "current position" is the stale
+  // pre-seek value, silently dropping part of the requested offset. The
+  // token guards against an earlier, slower-resolving seek clearing a newer
+  // one's target out from under it.
+  const pendingSeekRef = useRef<{ position: number; token: number } | null>(null);
+  const seekTokenCounterRef = useRef(0);
+  const performSeek = async (p: AudioPlayer, position: number): Promise<void> => {
+    const token = ++seekTokenCounterRef.current;
+    pendingSeekRef.current = { position, token };
+    // A live seek (scrubber drag or ±10s tap) is itself a mid-file range
+    // request — the same request shape that trips Appwrite's cold-file byte-0
+    // fallback (see primeRangeSupport). loadAndPlay primes before the initial
+    // request, but if that prime silently failed/timed out, this was the one
+    // path with no retry, so a drag straight into unbuffered territory could
+    // still land on byte 0 and sound like a restart. Priming here is a cheap
+    // no-op (TTL + in-flight dedup) whenever the file's already warm.
+    const sourceUri = resolvedSourceUriRef.current;
+    if (sourceUri && isRemoteUri(sourceUri)) {
+      await audioCacheService.primeRangeSupport(sourceUri);
+      if (pendingSeekRef.current?.token !== token) return;
+    }
+    await seekWithCap(p, position);
+    if (pendingSeekRef.current?.token === token) {
+      pendingSeekRef.current = null;
+    }
+  };
+
   // Fallback disposal of a swapped-out player. `createAudioPlayer` instances are
   // NOT auto-released (unlike the useAudioPlayer hook), so a discarded player
   // must be remove()d or it leaks native resources. swapToFreshPlayer now
@@ -276,6 +307,7 @@ function useAudioChannel(
     // Any fresh load supersedes a coordinator-detached snapshot — callers that
     // resume from it read the ref BEFORE calling this.
     setDetachedPosition(null);
+    pendingSeekRef.current = null;
     setPlayer(next);
     return next;
   };
@@ -755,6 +787,7 @@ function useAudioChannel(
     clearSlowConnection();
     setDownloadProgress(null);
     setDetachedPosition(null);
+    pendingSeekRef.current = null;
     try {
       if (playerRef.current.playing) {
         playerRef.current.pause();
@@ -905,11 +938,12 @@ function useAudioChannel(
       }
 
       const p = playerRef.current;
+      const basePosition = pendingSeekRef.current?.position ?? p.currentTime;
       const effectiveDurationSec = getEffectiveDuration();
       const newPosition = effectiveDurationSec != null
-        ? Math.min(p.currentTime + seconds, effectiveDurationSec)
-        : p.currentTime + seconds;
-      await seekWithCap(p, newPosition);
+        ? Math.min(basePosition + seconds, effectiveDurationSec)
+        : basePosition + seconds;
+      await performSeek(p, newPosition);
     } catch (error) {
     }
   };
@@ -927,8 +961,9 @@ function useAudioChannel(
       }
 
       const p = playerRef.current;
-      const newPosition = Math.max(p.currentTime - seconds, 0);
-      await seekWithCap(p, newPosition);
+      const basePosition = pendingSeekRef.current?.position ?? p.currentTime;
+      const newPosition = Math.max(basePosition - seconds, 0);
+      await performSeek(p, newPosition);
     } catch (error) {
     }
   };
@@ -949,7 +984,7 @@ function useAudioChannel(
         return;
       }
 
-      await seekWithCap(playerRef.current, newPosition);
+      await performSeek(playerRef.current, newPosition);
     } catch (error) {
     }
   };

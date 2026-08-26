@@ -24,6 +24,7 @@ import Animated, {
   interpolate,
   Extrapolate,
 } from 'react-native-reanimated';
+import { ScrollView as GestureHandlerScrollView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ArrowLeftIcon from '../../assets/icons/arrow-left';
 import BookmarkIcon from '../../assets/icons/bookmark';
@@ -49,6 +50,14 @@ type TemptationDetailsNavigationProp = NativeStackNavigationProp<
   RootStackParamList,
   ScreenNames.TEMPTATION_DETAILS
 >;
+
+// MediaControls' scrubber uses a react-native-gesture-handler Pan gesture. On
+// Android, a plain RN ScrollView's native touch dispatch competes with a
+// nested RNGH pan gesture in a way iOS's UIKit recognizers don't — the
+// scrubber drag gets swallowed by the scroll. Wrapping the gesture-handler
+// ScrollView (not the plain RN one) lets RNGH properly negotiate touch
+// priority with it on Android.
+const AnimatedScrollView = Animated.createAnimatedComponent(GestureHandlerScrollView);
 
 export default function TemptationDetails() {
   const navigation = useNavigation<TemptationDetailsNavigationProp>();
@@ -307,7 +316,7 @@ export default function TemptationDetails() {
         </Animated.View>
       </Animated.View>
 
-      <Animated.ScrollView
+      <AnimatedScrollView
         style={[styles.content, contentAnimatedStyle]}
         contentContainerStyle={[
           styles.contentContainer,
@@ -452,7 +461,7 @@ export default function TemptationDetails() {
             />
           )}
         </View>
-      </Animated.ScrollView>
+      </AnimatedScrollView>
     </View>
   );
 }

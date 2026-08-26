@@ -8,6 +8,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ImageBackground,
+  ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import CheckIcon from '../../assets/icons/check';
@@ -68,7 +69,7 @@ export function SignIn() {
       >
         <SafeAreaView style={styles.safeArea}>
           <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
             style={styles.keyboardAvoidingView}
           >
             <View style={styles.header}>
@@ -79,7 +80,12 @@ export function SignIn() {
               <View style={styles.headerSpacer} />
             </View>
 
-            <View style={styles.content}>
+            <ScrollView
+              style={styles.content}
+              contentContainerStyle={styles.contentContainer}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
               <Text style={styles.title}>Sign In</Text>
 
               <Input
@@ -129,7 +135,7 @@ export function SignIn() {
                   <Text style={styles.errorText}>{errorMessage}</Text>
                 </View>
               )}
-            </View>
+            </ScrollView>
 
             <View style={styles.buttonContainer}>
               <Button
@@ -180,8 +186,11 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+  },
+  contentContainer: {
     paddingHorizontal: 20,
     paddingTop: 40,
+    paddingBottom: 20,
   },
   buttonContainer: {
     paddingHorizontal: 20,

@@ -28,11 +28,11 @@ import { useTrialStore } from '../../store/trialStore';
 
 type PlanType = 'monthly' | 'yearly';
 
-const DISPLAY_PRICES = {
-  monthly: '$13.99',
-  yearly: '$99',
-  yearlyPerMonth: '~$8.25/month',
-};
+function getYearlyPerMonthHint(displayPrice: string, price?: number): string | null {
+  if (!price) return null;
+  const currencySymbol = displayPrice.match(/^[^\d]+/)?.[0] || '$';
+  return `~${currencySymbol}${(price / 12).toFixed(2)}/month`;
+}
 
 export function Subscription() {
   const navigation = useNavigation<any>();
@@ -51,6 +51,7 @@ export function Subscription() {
     checkSubscription,
     loadProducts,
     setError,
+    products,
   } = useSubscriptionStore();
   const isSharedAccessActive = useSharedAccessStore((s) => s.isSharedAccessActive);
   const markSharedAccessUpgraded = useSharedAccessStore((s) => s.markSharedAccessUpgraded);
@@ -64,9 +65,11 @@ export function Subscription() {
     checkSubscription().finally(() => setHasCheckedSubscription(true));
   }, [loadProducts, checkSubscription]);
 
-  const yearlyPrice = DISPLAY_PRICES.yearly;
-  const monthlyPrice = DISPLAY_PRICES.monthly;
-  const yearlyPerMonthHint = DISPLAY_PRICES.yearlyPerMonth;
+  const yearlyPrice = products.yearly?.displayPrice || '—';
+  const monthlyPrice = products.monthly?.displayPrice || '—';
+  const yearlyPerMonthHint = products.yearly
+    ? getYearlyPerMonthHint(products.yearly.displayPrice, products.yearly.price)
+    : null;
 
   const handleBack = () => {
     if (navigation.canGoBack()) {

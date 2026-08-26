@@ -5,12 +5,18 @@ import {
   ImageBackground,
   KeyboardAvoidingView,
   Platform,
-  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+// MediaControls' scrubber uses a react-native-gesture-handler Pan gesture. On
+// Android, a plain RN ScrollView's native touch dispatch competes with a
+// nested RNGH pan gesture in a way iOS's UIKit recognizers don't — the
+// scrubber drag gets swallowed by the scroll. The gesture-handler ScrollView
+// (not the plain RN one) lets RNGH properly negotiate touch priority with it
+// on Android.
+import { ScrollView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ArrowLeftIcon from '../../assets/icons/arrow-left';
 import { MediaControls } from '../../components/MediaControls';
