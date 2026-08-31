@@ -37,7 +37,6 @@ const appwriteConfig = {
   revenueCatApiKeyAndroid: REVENUECAT_API_KEY_ANDROID || REVENUECAT_API_KEY || '',
 };
 
-
 const client = new Client()
   .setEndpoint(appwriteConfig.endpoint)
   .setProject(appwriteConfig.projectId)
