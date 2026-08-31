@@ -1,4 +1,5 @@
-import { ID, account } from "./appwrite.config";
+import { ID, account, functions } from "./appwrite.config";
+import appwriteConfig from "./appwrite.config";
 import type { Models } from "react-native-appwrite";
 import type { User } from "../types";
 import { showAppwriteError } from "./notifications";
@@ -126,27 +127,60 @@ export const createPasswordRecovery = async (
   email: string,
   url?: string
 ): Promise<void> => {
+  if (!appwriteConfig.passwordResetFunctionId) {
+    throw new Error(
+      'APPWRITE_PASSWORD_RESET_FUNCTION_ID is not configured. Please check your .env file.'
+    );
+  }
+
   try {
     // Use the admin redirect app for deep linking - opens app if installed, falls back to the web redirect if not.
     // The app will intercept /reset-password path via Universal Links/App Links
     // Website will open at root (/) when app is not installed
-    const recoveryUrl = url || "https://nevermore-admin-app-seven.vercel.app/reset-password";
-    await account.createRecovery({
-      email,
-      url: recoveryUrl,
+    const deepLink = url || "https://nevermore-admin-app-seven.vercel.app/reset-password";
+
+    const execution = await functions.createExecution({
+      functionId: appwriteConfig.passwordResetFunctionId,
+      body: JSON.stringify({ email, deepLink }),
+      async: false,
     });
+
+    let result: { success?: boolean; message?: string } = {};
+    try {
+      result = execution.responseBody ? JSON.parse(execution.responseBody) : {};
+    } catch {
+      // Fall through to the generic error below.
+    }
+
+    if (execution.responseStatusCode >= 400 || !result.success) {
+      throw new Error(result.message || 'Failed to send recovery email');
+    }
   } catch (error: unknown) {
     throw error;
   }
 };
 
+// Consumes the token issued by the send-password-reset-email function: logs the
+// user in with it (same mechanism as magic-URL sign-in), sets the new password,
+// then ends that session so the user signs back in with their new credentials.
 export const updatePasswordRecovery = async (
   userId: string,
   secret: string,
   password: string
 ): Promise<void> => {
   try {
-    await account.updateRecovery(userId, secret, password);
+    const existingSession = await getCurrentSession();
+    if (existingSession) {
+      try {
+        await account.deleteSession('current');
+      } catch (deleteError) {
+        // Ignore delete errors
+      }
+    }
+
+    await account.createSession({ userId, secret });
+    await account.updatePassword(password);
+    await account.deleteSession('current');
   } catch (error: unknown) {
     showAppwriteError(error, { skipUnauthorized: true });
     throw error;
