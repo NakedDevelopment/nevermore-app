@@ -1,0 +1,72 @@
+<!--
+  Brevo transactional template: Nevermore sign-in / email verification.
+
+  Create as a NEW transactional template (it will become template #3) and put
+  that ID in BREVO_MAGIC_URL_TEMPLATE_ID on the send-magic-url-email function.
+
+  Required params, supplied by functions/send-magic-url-email:
+    {{ params.FIRSTNAME }}  recipient's name, or "there"
+    {{ params.REDIRECT }}   full link including ?userId=...&secret=...
+
+  Suggested subject:  Verify your Nevermore email
+  Suggested preview:  Tap to confirm your email and get started
+  Sender:             louis@nevermoreapp.com (nevermoreapp.com is authenticated)
+-->
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+       style="background-color:#0d0618;margin:0;padding:0;">
+  <tr>
+    <td align="center" style="padding:32px 16px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+             style="max-width:480px;background-color:#160c26;border-radius:12px;">
+        <tr>
+          <td align="center" style="padding:32px 32px 8px 32px;">
+            <div style="font-family:Georgia,'Times New Roman',serif;font-size:20px;
+                        letter-spacing:4px;color:#ffffff;">NEVERMORE</div>
+            <div style="color:#8b5cf6;font-size:14px;padding-top:6px;">&#10022;</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:16px 32px 0 32px;font-family:Helvetica,Arial,sans-serif;
+                     font-size:15px;line-height:22px;color:#e8e3f0;">
+            <p style="margin:0 0 16px 0;">Hello {{ params.FIRSTNAME }},</p>
+            <p style="margin:0 0 16px 0;">
+              Confirm your email address to finish setting up your Nevermore account.
+            </p>
+            <p style="margin:0 0 24px 0;">
+              Use the button below. This link will expire in 24 hours and can only be used once.
+            </p>
+          </td>
+        </tr>
+        <tr>
+          <td align="center" style="padding:0 32px 24px 32px;">
+            <a href="{{ params.REDIRECT }}"
+               style="display:inline-block;background-color:#7c3aed;color:#ffffff;
+                      font-family:Helvetica,Arial,sans-serif;font-size:15px;font-weight:bold;
+                      text-decoration:none;padding:12px 28px;border-radius:6px;">
+              Verify Email
+            </a>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:0 32px 24px 32px;font-family:Helvetica,Arial,sans-serif;
+                     font-size:12px;line-height:18px;color:#9b8fb0;word-break:break-all;">
+            <p style="margin:0 0 12px 0;">
+              If the button doesn't work, copy and paste this link into your browser:
+            </p>
+            <p style="margin:0;"><a href="{{ params.REDIRECT }}" style="color:#a78bfa;">{{ params.REDIRECT }}</a></p>
+          </td>
+        </tr>
+        <tr>
+          <td align="center" style="padding:0 32px 32px 32px;font-family:Helvetica,Arial,sans-serif;
+                     font-size:12px;line-height:18px;color:#7c6f8f;">
+            <p style="margin:0 0 12px 0;">
+              If you didn't create a Nevermore account, you can safely ignore this email.
+            </p>
+            <div style="color:#8b5cf6;font-size:13px;">&#9825;</div>
+            <p style="margin:8px 0 0 0;">&mdash; The Nevermore Team</p>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
