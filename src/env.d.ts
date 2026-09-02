@@ -11,6 +11,7 @@ declare module '@env' {
   export const APPWRITE_INVITATION_FUNCTION_ID: string;
   export const APPWRITE_WELCOME_QUOTE_COLLECTION_ID: string;
   export const APPWRITE_PASSWORD_RESET_FUNCTION_ID: string;
+  export const APPWRITE_MAGIC_URL_FUNCTION_ID: string;
   export const APPWRITE_PLATFORM: string;
   export const APPWRITE_STORAGE_BUCKET_ID: string;
   export const IAP_PRODUCT_ID_MONTHLY: string;

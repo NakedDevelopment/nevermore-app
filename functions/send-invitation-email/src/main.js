@@ -1,5 +1,11 @@
 const { Client, Users, Query, ID } = require('node-appwrite');
 
+// The recipient normally does NOT have Nevermore installed when the invite
+// arrives, so the token has to outlive: read email -> tap -> app store ->
+// install -> open -> accept.
+const TOKEN_LENGTH = 6;
+const TOKEN_EXPIRY_SECONDS = 60 * 60 * 24 * 7; // 7 days
+
 module.exports = async ({ req, res, log, error }) => {
   let payload = {};
   try {
@@ -15,11 +21,20 @@ module.exports = async ({ req, res, log, error }) => {
   }
 
   const brevoApiKey = process.env.BREVO_API_KEY;
-  const brevoTemplateId = Number(process.env.BREVO_INVITATION_TEMPLATE_ID || '1');
+  const templateIdRaw = process.env.BREVO_INVITATION_TEMPLATE_ID;
 
   if (!brevoApiKey) {
     error('BREVO_API_KEY is not configured');
     return res.json({ success: false, message: 'Email provider is not configured' }, 500);
+  }
+
+  // No numeric fallback on purpose: a `|| '1'` style default silently sends
+  // whatever template happens to occupy that slot in Brevo when the env var
+  // is missing on the deployed function.
+  const brevoTemplateId = Number(templateIdRaw);
+  if (!templateIdRaw || !Number.isInteger(brevoTemplateId) || brevoTemplateId <= 0) {
+    error(`BREVO_INVITATION_TEMPLATE_ID is missing or invalid: ${JSON.stringify(templateIdRaw)}`);
+    return res.json({ success: false, message: 'Email template is not configured' }, 500);
   }
 
   const endpoint = process.env.APPWRITE_FUNCTION_API_ENDPOINT;
@@ -58,7 +73,10 @@ module.exports = async ({ req, res, log, error }) => {
 
   let secret;
   try {
-    const token = await users.createToken(userId);
+    // Explicit lifetime. Appwrite's server-side default is 15 minutes, which
+    // expires while the recipient is still installing the app from the store,
+    // leaving them with a dead invite link.
+    const token = await users.createToken(userId, TOKEN_LENGTH, TOKEN_EXPIRY_SECONDS);
     secret = token.secret;
   } catch (err) {
     error('Failed to create login token: ' + err.message);

@@ -1,4 +1,14 @@
-const { Client, Users, Query } = require('node-appwrite');
+const { Client, Users, Query, ID } = require('node-appwrite');
+
+// Sign-in / email-verification link, sent via Brevo.
+//
+// Replaces account.createMagicURLToken(), which used Appwrite's built-in
+// mailer and was the last user-facing email still branded as Appwrite.
+//
+// Token lifetime is deliberately long: the recipient may need to install the
+// app from the store before the link can be used.
+const TOKEN_LENGTH = 6;
+const TOKEN_EXPIRY_SECONDS = 60 * 60 * 24; // 24 hours
 
 module.exports = async ({ req, res, log, error }) => {
   let payload = {};
@@ -15,19 +25,18 @@ module.exports = async ({ req, res, log, error }) => {
   }
 
   const brevoApiKey = process.env.BREVO_API_KEY;
-  const templateIdRaw = process.env.BREVO_PASSWORD_RESET_TEMPLATE_ID;
+  const templateIdRaw = process.env.BREVO_MAGIC_URL_TEMPLATE_ID;
 
   if (!brevoApiKey) {
     error('BREVO_API_KEY is not configured');
     return res.json({ success: false, message: 'Email provider is not configured' }, 500);
   }
 
-  // No numeric fallback on purpose: a `|| '1'` style default silently sends
-  // whatever template happens to occupy that slot in Brevo when the env var
-  // is missing on the deployed function.
+  // No numeric fallback on purpose: guessing an ID silently sends whatever
+  // template happens to occupy that slot in Brevo.
   const brevoTemplateId = Number(templateIdRaw);
   if (!templateIdRaw || !Number.isInteger(brevoTemplateId) || brevoTemplateId <= 0) {
-    error(`BREVO_PASSWORD_RESET_TEMPLATE_ID is missing or invalid: ${JSON.stringify(templateIdRaw)}`);
+    error(`BREVO_MAGIC_URL_TEMPLATE_ID is missing or invalid: ${JSON.stringify(templateIdRaw)}`);
     return res.json({ success: false, message: 'Email template is not configured' }, 500);
   }
 
@@ -38,41 +47,36 @@ module.exports = async ({ req, res, log, error }) => {
 
   let client;
   try {
-    client = new Client()
-      .setEndpoint(endpoint)
-      .setProject(projectId)
-      .setKey(dynamicKey);
+    client = new Client().setEndpoint(endpoint).setProject(projectId).setKey(dynamicKey);
   } catch (err) {
     error('Failed to construct Appwrite client: ' + err.message);
-    return res.json({ success: false, message: 'Failed to configure Appwrite client', debug: err.message }, 500);
+    return res.json({ success: false, message: 'Failed to configure Appwrite client' }, 500);
   }
 
   const users = new Users(client);
 
-  let user = null;
+  // Matches the previous createMagicURLToken behaviour, which created the
+  // account when the address was not yet registered.
+  let user;
   try {
     const existing = await users.list([Query.equal('email', email)]);
     if (existing.total > 0) {
       user = existing.users[0];
+    } else {
+      user = await users.create(ID.unique(), email);
     }
   } catch (err) {
-    error('Failed to look up user: ' + err.message);
-    return res.json({ success: false, message: 'Failed to process password reset request', debug: err.message }, 500);
-  }
-
-  if (!user) {
-    // Don't create an account and don't reveal whether this email is registered.
-    log(`Password reset requested for unknown email ${email}`);
-    return res.json({ success: true });
+    error('Failed to find or create user: ' + err.message);
+    return res.json({ success: false, message: 'Failed to prepare account' }, 500);
   }
 
   let secret;
   try {
-    const token = await users.createToken(user.$id, 6, 3600);
+    const token = await users.createToken(user.$id, TOKEN_LENGTH, TOKEN_EXPIRY_SECONDS);
     secret = token.secret;
   } catch (err) {
-    error('Failed to create reset token: ' + err.message);
-    return res.json({ success: false, message: 'Failed to create password reset token', debug: err.message }, 500);
+    error('Failed to create magic URL token: ' + err.message);
+    return res.json({ success: false, message: 'Failed to create sign-in token' }, 500);
   }
 
   const separator = deepLink.includes('?') ? '&' : '?';
@@ -99,14 +103,14 @@ module.exports = async ({ req, res, log, error }) => {
     if (!emailResponse.ok) {
       const text = await emailResponse.text();
       error('Brevo API error: ' + text);
-      return res.json({ success: false, message: 'Failed to send password reset email' }, 502);
+      return res.json({ success: false, message: 'Failed to send verification email' }, 502);
     }
   } catch (err) {
     error('Failed to call Brevo API: ' + err.message);
-    return res.json({ success: false, message: 'Failed to send password reset email' }, 500);
+    return res.json({ success: false, message: 'Failed to send verification email' }, 500);
   }
 
-  log(`Password reset email sent to ${email} via Brevo template ${brevoTemplateId}`);
+  log(`Magic URL email sent to ${email} via Brevo template ${brevoTemplateId}`);
 
   return res.json({ success: true });
 };

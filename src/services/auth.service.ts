@@ -6,6 +6,7 @@ import { showAppwriteError } from "./notifications";
 import { isUnauthorizedError } from "./errorHandler";
 import { userProfileService } from "./userProfile.service";
 import { invitationService } from "./invitation.service";
+import { MAGIC_URL_LINK, PASSWORD_RESET_LINK } from "../constants/deepLinks";
 
 export interface SignUpParams {
   email: string;
@@ -137,7 +138,7 @@ export const createPasswordRecovery = async (
     // Use the admin redirect app for deep linking - opens app if installed, falls back to the web redirect if not.
     // The app will intercept /reset-password path via Universal Links/App Links
     // Website will open at root (/) when app is not installed
-    const deepLink = url || "https://nevermore-admin-app-seven.vercel.app/reset-password";
+    const deepLink = url || PASSWORD_RESET_LINK;
 
     const execution = await functions.createExecution({
       functionId: appwriteConfig.passwordResetFunctionId,
@@ -196,20 +197,40 @@ export const isAuthenticated = async (): Promise<boolean> => {
   }
 };
 
+// Sends the sign-in / email-verification link through the send-magic-url-email
+// Appwrite function so it goes out via Brevo.
+//
+// This previously called account.createMagicURLToken(), which uses Appwrite's
+// own built-in mailer. That is why invite and verification mail kept arriving
+// branded as Appwrite even after the invitation and password-reset flows had
+// already been moved to Brevo.
 export const createMagicURLToken = async (
   email: string,
   url?: string
 ): Promise<void> => {
+  if (!appwriteConfig.magicUrlFunctionId) {
+    throw new Error(
+      'APPWRITE_MAGIC_URL_FUNCTION_ID is not configured. Please check your .env file.'
+    );
+  }
+
+  const deepLink = url || MAGIC_URL_LINK;
+
+  const execution = await functions.createExecution({
+    functionId: appwriteConfig.magicUrlFunctionId,
+    body: JSON.stringify({ email, deepLink }),
+    async: false,
+  });
+
+  let result: { success?: boolean; message?: string } = {};
   try {
-    const magicUrl = url || "https://nevermore-admin-app-seven.vercel.app/verify-magic-url";
-    await account.createMagicURLToken({
-      userId: ID.unique(),
-      email,
-      url: magicUrl,
-    });
-  } catch (error: unknown) {
-    showAppwriteError(error, { skipUnauthorized: true });
-    throw error;
+    result = execution.responseBody ? JSON.parse(execution.responseBody) : {};
+  } catch {
+    // Fall through to the generic error below.
+  }
+
+  if (execution.responseStatusCode >= 400 || !result.success) {
+    throw new Error(result.message || 'Failed to send verification email');
   }
 };
 

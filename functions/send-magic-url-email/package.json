@@ -1,0 +1,9 @@
+{
+  "name": "send-magic-url-email",
+  "version": "1.0.0",
+  "type": "commonjs",
+  "main": "src/main.js",
+  "dependencies": {
+    "node-appwrite": "^17.0.0"
+  }
+}
