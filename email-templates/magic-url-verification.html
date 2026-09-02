@@ -1,16 +1,19 @@
 <!--
   Brevo transactional template: Nevermore sign-in / email verification.
 
-  Create as a NEW transactional template (it will become template #3) and put
-  that ID in BREVO_MAGIC_URL_TEMPLATE_ID on the send-magic-url-email function.
+  Live in Brevo as template #4 ("Email Verification", Active), created from this
+  file. Set BREVO_MAGIC_URL_TEMPLATE_ID=4 on the send-magic-url-email function.
+  This file is the source of truth - edit here, then paste into Brevo.
 
   Required params, supplied by functions/send-magic-url-email:
     {{ params.FIRSTNAME }}  recipient's name, or "there"
     {{ params.REDIRECT }}   full link including ?userId=...&secret=...
 
-  Suggested subject:  Verify your Nevermore email
-  Suggested preview:  Tap to confirm your email and get started
-  Sender:             louis@nevermoreapp.com (nevermoreapp.com is authenticated)
+  Subject:  Verify your Nevermore email
+  Preview:  Tap to confirm your email and get started
+  Sender:   louis@nevermoreapp.com (nevermoreapp.com is authenticated in Brevo)
+
+  Brevo template IDs: #1 invitation, #2 Password Reset, #4 Email Verification.
 -->
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
        style="background-color:#0d0618;margin:0;padding:0;">
