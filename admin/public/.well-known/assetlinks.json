@@ -1,11 +1,13 @@
 [
   {
-    "relation": ["delegate_permission/common.handle_all_urls"],
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
     "target": {
       "namespace": "android_app",
       "package_name": "com.nevermoreapp",
       "sha256_cert_fingerprints": [
-        "REPLACE_WITH_PLAY_APP_SIGNING_SHA256"
+        "13:60:9E:18:11:AB:61:2B:4C:AF:3F:09:1A:7B:8A:F7:0C:9C:E3:BB:FF:E2:66:F3:43:65:C2:C9:F5:F4:28:DF"
       ]
     }
   }
