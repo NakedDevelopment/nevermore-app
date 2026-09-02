@@ -1,4 +1,4 @@
-import { account, tablesDB } from "./appwrite";
+import { account, tablesDB, functions } from "./appwrite";
 import { Query } from "appwrite";
 import type { Models } from "appwrite";
 import type { User } from "../types";
@@ -253,13 +253,34 @@ export const createPasswordRecovery = async (
 
   try {
     await assertCoachEmailForAdminRecovery(normalizedEmail);
-    // If no URL is provided, construct the default recovery URL
-    // Appwrite will append userId and secret as query parameters
-    const recoveryUrl = url || `${window.location.origin}/create-new-password`;
-    await account.createRecovery({
-      email: normalizedEmail,
-      url: recoveryUrl,
+    // Routed through the send-password-reset-email Appwrite function so the
+    // mail goes out via Brevo. account.createRecovery() would use Appwrite's
+    // built-in mailer instead, which is what made these arrive Appwrite-branded.
+    const functionId = import.meta.env.VITE_APPWRITE_PASSWORD_RESET_FUNCTION_ID;
+    if (!functionId) {
+      throw new Error(
+        'VITE_APPWRITE_PASSWORD_RESET_FUNCTION_ID is not configured. Please check your .env file.'
+      );
+    }
+
+    const deepLink = url || `${window.location.origin}/create-new-password`;
+
+    const execution = await functions.createExecution({
+      functionId,
+      body: JSON.stringify({ email: normalizedEmail, deepLink }),
+      async: false,
     });
+
+    let result: { success?: boolean; message?: string } = {};
+    try {
+      result = execution.responseBody ? JSON.parse(execution.responseBody) : {};
+    } catch {
+      // Fall through to the generic error below.
+    }
+
+    if (execution.responseStatusCode >= 400 || !result.success) {
+      throw new Error(result.message || 'Failed to send recovery email');
+    }
   } catch (error: unknown) {
     const isEligibilityError =
       error instanceof Error &&
@@ -287,11 +308,13 @@ export const updatePasswordRecovery = async (
       // Ignore if no session exists
     }
     
-    await account.updateRecovery({
-      userId,
-      secret,
-      password,
-    });
+    // The function issues a generic Appwrite token (users.createToken), not a
+    // recovery secret, so account.updateRecovery() no longer applies. Sign in
+    // with the token, set the new password, then drop the session so the user
+    // signs back in with the new credentials. Mirrors the mobile app.
+    await account.createSession({ userId, secret });
+    await account.updatePassword({ password });
+    await account.deleteSession({ sessionId: "current" });
   } catch (error: unknown) {
     // Show notification for password update errors
     showAppwriteError(error, { skipUnauthorized: true });
