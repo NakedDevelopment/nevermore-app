@@ -6,6 +6,7 @@ import { isUnauthorizedError } from './errorHandler';
 import { showAppwriteError } from './notifications';
 import { userProfileService } from './userProfile.service';
 import { Platform } from 'react-native';
+import { buildInviteLink } from '../constants/deepLinks';
 
 async function getCurrentUser(): Promise<Models.User<Models.Preferences> | null> {
   try {
@@ -116,7 +117,7 @@ class InvitationService {
 
       const invitationToken = ID.unique();
 
-      const deepLink = `https://nevermore-admin-app-seven.vercel.app/invite?token=${invitationToken}`;
+      const deepLink = buildInviteLink(invitationToken);
       
       const invitation = await tablesDB.createRow({
         databaseId: APPWRITE_DATABASE_ID,
@@ -247,7 +248,7 @@ class InvitationService {
       }
 
       const invitationToken = ID.unique();
-      const deepLink = `https://nevermore-admin-app-seven.vercel.app/invite?token=${invitationToken}`;
+      const deepLink = buildInviteLink(invitationToken);
 
       try {
         await this.sendInvitationEmail(invitation.email, deepLink);

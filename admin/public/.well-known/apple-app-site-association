@@ -1,0 +1,20 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "C5DF3CP9LJ.com.nevermore.app",
+        "paths": [
+          "/invite",
+          "/invite/*",
+          "/reset-password",
+          "/reset-password/*",
+          "/create-new-password",
+          "/create-new-password/*",
+          "/verify-magic-url",
+          "/verify-magic-url/*"
+        ]
+      }
+    ]
+  }
+}

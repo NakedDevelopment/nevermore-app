@@ -5,9 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && node scripts/verify-well-known.mjs",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "verify:well-known": "node scripts/verify-well-known.mjs"
   },
   "dependencies": {
     "@ffmpeg/ffmpeg": "^0.12.15",

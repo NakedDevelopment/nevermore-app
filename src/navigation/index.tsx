@@ -7,6 +7,7 @@ import { Linking } from 'react-native';
 import { useAuthStore } from '../store/authStore';
 import { useOnboardingStore } from '../store/onboardingStore';
 import { ScreenNames } from '../constants/ScreenNames';
+import { DEEP_LINK_PREFIXES } from '../constants/deepLinks';
 import { FortyDay } from './screens/FortyDay';
 import { Bookmark } from './screens/Bookmark';
 import { Welcome } from './screens/Welcome';
@@ -338,12 +339,7 @@ function RootStack({ initialRouteName }: { initialRouteName: string }) {
 }
 
 const linking = {
-  prefixes: [
-    'nevermoreapp://',
-    'https://nevermoreapp.com',
-    'https://nevermore-admin-app-seven.vercel.app',
-    'https://nevermore-admin-app.vercel.app',
-  ],
+  prefixes: DEEP_LINK_PREFIXES,
   config: {
     screens: {
       [ScreenNames.CREATE_NEW_PASSWORD]: {
