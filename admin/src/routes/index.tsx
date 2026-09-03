@@ -73,6 +73,10 @@ export const router = createBrowserRouter([
     element: <DeepLinkRedirect />,
   },
   {
+    path: '/verify-magic-url',
+    element: <DeepLinkRedirect />,
+  },
+  {
     path: '/invitation',
     element: <DeepLinkRedirect />,
   },
