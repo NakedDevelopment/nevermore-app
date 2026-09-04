@@ -86,6 +86,19 @@ module.exports = async ({ req, res, log, error }) => {
   const separator = deepLink.includes('?') ? '&' : '?';
   const redirect = `${deepLink}${separator}userId=${encodeURIComponent(userId)}&secret=${encodeURIComponent(secret)}`;
 
+  // The recipient normally does NOT have the app installed, so the Universal
+  // Link/App Link in REDIRECT can't survive the store install round-trip.
+  // Surface the raw invitation token as a plain-text code too, so they can
+  // install fresh, open the app, and paste it into "Enter Invite Code"
+  // instead of depending on deferred deep linking (which iOS has no
+  // reliable mechanism for without a paid attribution service).
+  let inviteCode = '';
+  try {
+    inviteCode = new URL(deepLink).searchParams.get('token') || '';
+  } catch {
+    // Malformed deepLink — fall back to no code rather than fail the send.
+  }
+
   try {
     const emailResponse = await fetch('https://api.brevo.com/v3/smtp/email', {
       method: 'POST',
@@ -100,6 +113,7 @@ module.exports = async ({ req, res, log, error }) => {
         params: {
           FIRSTNAME: firstName || 'there',
           REDIRECT: redirect,
+          INVITE_CODE: inviteCode,
         },
       }),
     });

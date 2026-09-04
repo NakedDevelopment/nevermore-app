@@ -1,214 +1,204 @@
 <!--
-  Nevermore - Support Network Invitation email
-  ------------------------------------------------------------------
-  Replaces the default Appwrite Magic URL email template.
+  Brevo transactional template: Nevermore invitation email (template #1).
 
-  HOW TO APPLY:
-    Appwrite Console -> Auth -> Templates -> Magic URL session
-      - Subject:  You're invited to join someone's Nevermore support circle
-      - Message:  paste the full <html> block below
+  This file was stale — it documented the old Appwrite native Magic URL
+  template format ({{user}}/{{redirect}}/{{project}}), which the app stopped
+  using once invitations moved to Brevo via functions/send-invitation-email.
+  Live in Brevo as template #1 ("New template", Active). This file is the
+  source of truth going forward - edit here, then paste into Brevo.
 
-  TEMPLATE VARIABLES:
-    {{user}}      -> invited user label/name from Appwrite
-    {{redirect}}  -> secure invitation link
-    {{project}}   -> project name, intentionally not shown in visible copy
+  Required params, supplied by functions/send-invitation-email:
+    {{ params.FIRSTNAME }}    recipient's name, or "there"
+    {{ params.REDIRECT }}     full link including ?token=...&userId=...&secret=...
+    {{ params.INVITE_CODE }}  plain-text invitation token, shown as a fallback
+                              for recipients who install the app fresh (no app
+                              installed yet, so the deep link can't survive the
+                              store round-trip) and redeem it manually via the
+                              app's "Enter Invite Code" screen instead.
 
-  Notes:
-    - Styles are inline and table-based for broad email-client support.
-    - No admin/internal URLs appear in visible copy; the button uses {{redirect}}.
+  Subject:  You matter to someone's recovery.
+  Sender:   louis@nevermoreapp.com (nevermoreapp.com is authenticated in Brevo)
+
+  Brevo template IDs: #1 invitation, #2 Password Reset, #4 Email Verification.
 -->
 <!DOCTYPE html>
-<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-    <title>Your Nevermore invitation</title>
-    <!--[if mso]>
-    <style type="text/css">
-      body, table, td, a, p { font-family: Arial, Helvetica, sans-serif !important; }
-    </style>
-    <![endif]-->
-  </head>
-  <body style="margin:0; padding:0; background-color:#050509; -webkit-text-size-adjust:100%; -ms-text-size-adjust:100%;">
-    <div style="display:none; max-height:0; overflow:hidden; opacity:0; color:transparent; height:0; width:0;">
-      Someone has invited you into their support circle on Nevermore.
-    </div>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Nevermore - You've Been Invited</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Lato:wght@300;400;700&display=swap');
+    body,table,td,a{-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;}
+    table,td{mso-table-lspace:0pt;mso-table-rspace:0pt;}
+    img{-ms-interpolation-mode:bicubic;border:0;outline:none;text-decoration:none;}
+    body{margin:0;padding:0;background-color:#0d0b14;font-family:'Lato',Arial,sans-serif;}
 
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#050509;">
-      <tr>
-        <td align="center" style="padding:28px 12px;">
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:680px; width:100%; background-color:#101018; border:1px solid #2B194D; border-radius:18px; overflow:hidden;">
-            <tr>
-              <td style="padding:0; background:#160A2C;">
-                <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-                  <tr>
-                    <td style="padding:32px 32px 24px 32px; background:linear-gradient(135deg,#160A2C 0%,#101018 52%,#20103A 100%);">
-                      <div style="font-family:Georgia,'Times New Roman',serif; font-size:32px; line-height:1.2; letter-spacing:4px; color:#FFFFFF; text-align:center; text-transform:uppercase;">
-                        Nevermore
-                      </div>
-                      <div style="width:54px; height:2px; background-color:#8B5CF6; margin:16px auto 0 auto;"></div>
-                    </td>
-                  </tr>
-                </table>
-              </td>
-            </tr>
+    @media only screen and (max-width:620px){
+      .email-wrap{width:100%!important;}
+      .hero-title{font-size:26px!important;letter-spacing:4px!important;}
+      .header-inner{padding:16px 20px 14px 20px!important;}
+      .greeting-td{padding:18px 20px 8px 20px!important;}
+      .divider-top{padding:16px 20px 0 20px!important;}
+      .divider-mid{padding:0 20px!important;}
+      .feature-td{padding:18px 20px!important;}
+      .icon-td{display:block!important;width:100%!important;padding-right:0!important;padding-bottom:12px!important;text-align:center!important;}
+      .icon-td div{margin:0 auto!important;}
+      .text-td{display:block!important;width:100%!important;}
+      .cta-td{padding:24px 20px 14px 20px!important;}
+      .cta-inner td{width:100%!important;border-radius:10px!important;}
+      .cta-inner a{display:block!important;width:100%!important;box-sizing:border-box!important;padding:15px 20px!important;font-size:16px!important;}
+      .footer-td{padding:14px 20px 30px 20px!important;}
+    }
+  </style>
+</head>
+<body style="margin:0;padding:0;background-color:#0d0b14;">
 
-            <tr>
-              <td style="padding:28px 34px 0 34px;">
-                <p style="margin:0 0 18px 0; font-family:Arial,Helvetica,sans-serif; font-size:15px; line-height:1.65; color:#E7E3F3;">
-                  Hello {{user}},
-                </p>
-                <p style="margin:0 0 12px 0; font-family:Arial,Helvetica,sans-serif; font-size:15px; line-height:1.65; color:#E7E3F3;">
-                  Recovery, growth, and personal change are not things people should have to face alone.
-                </p>
-                <p style="margin:0; font-family:Arial,Helvetica,sans-serif; font-size:15px; line-height:1.65; color:#FFFFFF; font-weight:bold;">
-                  That's why Nevermore exists.
-                </p>
-              </td>
-            </tr>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#0d0b14;">
+<tr><td align="center" style="padding:0;">
 
-            <tr>
-              <td style="padding:22px 34px 0 34px;">
-                <p style="margin:0; font-family:Arial,Helvetica,sans-serif; font-size:15px; line-height:1.65; color:#D6D0E8;">
-                  Nevermore is a recovery-focused application designed to help individuals better understand themselves, navigate temptation, and build lasting change through guided audio experiences, exercises, and reflection.
-                </p>
-              </td>
-            </tr>
+  <table class="email-wrap" role="presentation" width="660" cellpadding="0" cellspacing="0" border="0"
+    style="max-width:660px;width:100%;background-color:#110e1f;background-image:linear-gradient(180deg,#1a1030 0%,#0d0b18 60%,#0a0814 100%);">
 
-            <tr>
-              <td style="padding:22px 34px 0 34px;">
-                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid #241739; border-bottom:1px solid #241739;">
-                  <tr>
-                    <td width="54" valign="top" style="padding:22px 18px 22px 0;">
-                      <table role="presentation" width="42" height="42" cellpadding="0" cellspacing="0" style="width:42px; height:42px; border:1px solid #8B5CF6; border-radius:21px;">
-                        <tr>
-                          <td align="center" valign="middle" style="font-family:Arial,Helvetica,sans-serif; font-size:20px; color:#A78BFA;">
-                            +
-                          </td>
-                        </tr>
-                      </table>
-                    </td>
-                    <td valign="top" style="padding:20px 0;">
-                      <p style="margin:0 0 6px 0; font-family:Arial,Helvetica,sans-serif; font-size:17px; line-height:1.4; color:#A78BFA; font-weight:bold;">
-                        Someone has invited you into their support circle.
-                      </p>
-                      <p style="margin:0; font-family:Arial,Helvetica,sans-serif; font-size:15px; line-height:1.65; color:#D6D0E8;">
-                        You were chosen because your presence, encouragement, and support matter deeply to their journey.
-                      </p>
-                    </td>
-                  </tr>
-                </table>
-              </td>
-            </tr>
+    <!-- TITLE BAR -->
+    <tr>
+      <td class="header-inner" align="center" style="padding:20px 40px 16px 40px;">
+        <div style="width:100%;height:2px;background:linear-gradient(90deg,transparent,#6b3fa0,#8b5cf6,#6b3fa0,transparent);margin-bottom:18px;"></div>
+        <h1 class="hero-title" style="margin:0;font-family:'Cinzel',Georgia,serif;font-size:38px;font-weight:700;letter-spacing:8px;color:#e8e0f5;text-transform:uppercase;text-shadow:0 0 30px rgba(139,92,246,0.5);">Nevermore</h1>
+        <div style="margin:12px auto 0;width:24px;height:24px;">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 2L14.5 9.5H22L16 14.5L18.5 22L12 17.5L5.5 22L8 14.5L2 9.5H9.5L12 2Z" fill="#7c3aed" opacity="0.9"/>
+          </svg>
+        </div>
+      </td>
+    </tr>
 
-            <tr>
-              <td style="padding:22px 34px 0 34px;">
-                <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-                  <tr>
-                    <td width="54" valign="top" style="padding:4px 18px 0 0;">
-                      <table role="presentation" width="42" height="42" cellpadding="0" cellspacing="0" style="width:42px; height:42px; border:1px solid #8B5CF6; border-radius:21px;">
-                        <tr>
-                          <td align="center" valign="middle" style="font-family:Arial,Helvetica,sans-serif; font-size:20px; color:#A78BFA;">
-                            &#9834;
-                          </td>
-                        </tr>
-                      </table>
-                    </td>
-                    <td valign="top">
-                      <p style="margin:0 0 8px 0; font-family:Arial,Helvetica,sans-serif; font-size:17px; line-height:1.4; color:#A78BFA; font-weight:bold;">
-                        Support-focused audio content was created specifically for you.
-                      </p>
-                      <p style="margin:0 0 12px 0; font-family:Arial,Helvetica,sans-serif; font-size:15px; line-height:1.65; color:#D6D0E8;">
-                        While portions of the app are designed for individuals in recovery, Nevermore also includes support-focused audio content created specifically for trusted friends, family members, and loved ones.
-                      </p>
-                      <p style="margin:0 0 8px 0; font-family:Arial,Helvetica,sans-serif; font-size:15px; line-height:1.65; color:#D6D0E8;">
-                        Inside the Temptations audio library, you'll find a Support mode that explains:
-                      </p>
-                      <p style="margin:0; font-family:Arial,Helvetica,sans-serif; font-size:14px; line-height:1.75; color:#E7E3F3;">
-                        &#10003; what your loved one may be experiencing internally,<br />
-                        &#10003; why certain struggles or behaviors happen,<br />
-                        &#10003; and how to better support them throughout recovery.
-                      </p>
-                    </td>
-                  </tr>
-                </table>
-              </td>
-            </tr>
+    <!-- GREETING -->
+    <tr>
+      <td class="greeting-td" style="padding:20px 48px 8px 48px;">
+        <p style="margin:0 0 12px 0;font-family:'Lato',Arial,sans-serif;font-size:16px;color:#c4b5d8;line-height:1.6;">Hello {{ params.FIRSTNAME }}​,</p>
+        <p style="margin:0 0 12px 0;font-family:'Lato',Arial,sans-serif;font-size:16px;color:#c4b5d8;line-height:1.6;">Recovery, growth, and personal change are not things people should have to face alone.</p>
+        <p style="margin:0;font-family:'Lato',Arial,sans-serif;font-size:16px;color:#8b5cf6;font-weight:700;line-height:1.6;">That's why Nevermore exists.</p>
+        <p style="margin:10px 0 0 0;font-family:'Lato',Arial,sans-serif;font-size:15px;color:#a89cc0;line-height:1.7;">Nevermore is a recovery-focused application designed to help individuals better understand themselves, navigate temptation, and build lasting change through guided audio experiences, exercises, and reflection.</p>
+      </td>
+    </tr>
 
-            <tr>
-              <td style="padding:24px 34px 0 34px;">
-                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid #241739;">
-                  <tr>
-                    <td width="54" valign="top" style="padding:22px 18px 0 0;">
-                      <table role="presentation" width="42" height="42" cellpadding="0" cellspacing="0" style="width:42px; height:42px; border:1px solid #8B5CF6; border-radius:21px;">
-                        <tr>
-                          <td align="center" valign="middle" style="font-family:Arial,Helvetica,sans-serif; font-size:20px; color:#A78BFA;">
-                            &#9829;
-                          </td>
-                        </tr>
-                      </table>
-                    </td>
-                    <td valign="top" style="padding-top:20px;">
-                      <p style="margin:0; font-family:Arial,Helvetica,sans-serif; font-size:15px; line-height:1.65; color:#D6D0E8;">
-                        This experience is designed to help you better understand the emotional and psychological side of recovery - not just for them, but for the people walking beside them as well.
-                      </p>
-                    </td>
-                  </tr>
-                </table>
-              </td>
-            </tr>
+    <!-- DIVIDER -->
+    <tr><td class="divider-top" style="padding:20px 48px 0 48px;"><div style="height:1px;background:linear-gradient(90deg,transparent,#3d2060,transparent);"></div></td></tr>
 
-            <tr>
-              <td align="center" style="padding:26px 34px 0 34px;">
-                <p style="margin:0 0 14px 0; font-family:Arial,Helvetica,sans-serif; font-size:15px; line-height:1.65; color:#E7E3F3;">
-                  If you'd like to accept this invitation, you can securely join their support circle below.
-                </p>
-                <table role="presentation" cellpadding="0" cellspacing="0">
-                  <tr>
-                    <td align="center" style="border-radius:10px; background-color:#8B5CF6;">
-                      <a href="{{redirect}}" style="display:inline-block; padding:15px 44px; font-family:Arial,Helvetica,sans-serif; font-size:16px; line-height:1; font-weight:bold; color:#FFFFFF; text-decoration:none; border-radius:10px;">
-                        Accept Invitation
-                      </a>
-                    </td>
-                  </tr>
-                </table>
-              </td>
-            </tr>
+    <!-- FEATURE 1 -->
+    <tr>
+      <td class="feature-td" style="padding:20px 48px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+          <tr>
+            <td class="icon-td" width="76" valign="top" style="padding-right:20px;">
+              <div style="width:56px;height:56px;border-radius:50%;border:1.5px solid #6b3fa0;background:rgba(107,63,160,0.18);text-align:center;line-height:56px;font-size:24px;">
+                &#128101;
+              </div>
+            </td>
+            <td class="text-td" valign="top">
+              <p style="margin:0 0 6px 0;font-family:'Lato',Arial,sans-serif;font-size:17px;font-weight:700;color:#8b5cf6;line-height:1.4;">Someone has invited you into their support circle.</p>
+              <p style="margin:0;font-family:'Lato',Arial,sans-serif;font-size:15px;color:#a89cc0;line-height:1.6;">You were chosen because your presence, encouragement, and support matter deeply to their journey.</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
 
-            <tr>
-              <td align="center" style="padding:24px 34px 0 34px;">
-                <p style="margin:0; font-family:Arial,Helvetica,sans-serif; font-size:14px; line-height:1.65; color:#E7E3F3;">
-                  Thank you for being someone they trust enough to invite in.
-                </p>
-                <p style="margin:6px 0 0 0; font-family:Georgia,'Times New Roman',serif; font-size:14px; line-height:1.6; color:#A78BFA;">
-                  The Nevermore Team
-                </p>
-              </td>
-            </tr>
+    <tr><td class="divider-mid" style="padding:0 48px;"><div style="height:1px;background:linear-gradient(90deg,transparent,#3d2060,transparent);"></div></td></tr>
 
-            <tr>
-              <td style="padding:24px 34px 0 34px;">
-                <div style="height:1px; width:100%; background-color:#241739;"></div>
-              </td>
-            </tr>
+    <!-- FEATURE 2 -->
+    <tr>
+      <td class="feature-td" style="padding:20px 48px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+          <tr>
+            <td class="icon-td" width="76" valign="top" style="padding-right:20px;">
+              <div style="width:56px;height:56px;border-radius:50%;border:1.5px solid #6b3fa0;background:rgba(107,63,160,0.18);text-align:center;line-height:56px;font-size:24px;">
+                &#127911;
+              </div>
+            </td>
+            <td class="text-td" valign="top">
+              <p style="margin:0 0 8px 0;font-family:'Lato',Arial,sans-serif;font-size:16px;font-weight:700;color:#8b5cf6;line-height:1.5;">While portions of the app are designed for individuals in recovery, Nevermore also includes support-focused audio content created specifically for you.</p>
+              <p style="margin:0 0 10px 0;font-family:'Lato',Arial,sans-serif;font-size:15px;color:#a89cc0;line-height:1.6;">Inside the Temptations audio library, you'll find a "Support" mode that explains:</p>
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                <tr><td style="padding:3px 8px 3px 0;color:#7c3aed;font-size:14px;">&#10003;</td><td style="font-family:'Lato',Arial,sans-serif;font-size:15px;color:#a89cc0;padding:3px 0;">what your loved one may be experiencing internally,</td></tr>
+                <tr><td style="padding:3px 8px 3px 0;color:#7c3aed;font-size:14px;">&#10003;</td><td style="font-family:'Lato',Arial,sans-serif;font-size:15px;color:#a89cc0;padding:3px 0;">why certain struggles or behaviors happen,</td></tr>
+                <tr><td style="padding:3px 8px 3px 0;color:#7c3aed;font-size:14px;">&#10003;</td><td style="font-family:'Lato',Arial,sans-serif;font-size:15px;color:#a89cc0;padding:3px 0;">and how to better support them throughout recovery.</td></tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
 
-            <tr>
-              <td align="center" style="padding:18px 34px 26px 34px; background-color:#0C0C13;">
-                <p style="margin:0; font-family:Arial,Helvetica,sans-serif; font-size:12px; line-height:1.6; color:#8E879F;">
-                  You received this email because someone invited you into their Nevermore support circle. If you were not expecting this, you can safely ignore it.
-                </p>
-                <p style="margin:14px 0 0 0; font-family:Georgia,'Times New Roman',serif; font-size:13px; letter-spacing:3px; color:#9F8AE8; text-transform:uppercase;">
-                  Nevermore
-                </p>
-                <p style="margin:6px 0 0 0; font-family:Arial,Helvetica,sans-serif; font-size:11px; color:#6F6880;">
-                  Support. Connection. Transformation.
-                </p>
-              </td>
-            </tr>
-          </table>
-        </td>
-      </tr>
-    </table>
-  </body>
+    <tr><td class="divider-mid" style="padding:0 48px;"><div style="height:1px;background:linear-gradient(90deg,transparent,#3d2060,transparent);"></div></td></tr>
+
+    <!-- FEATURE 3 -->
+    <tr>
+      <td class="feature-td" style="padding:20px 48px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+          <tr>
+            <td class="icon-td" width="76" valign="top" style="padding-right:20px;">
+              <div style="width:56px;height:56px;border-radius:50%;border:1.5px solid #6b3fa0;background:rgba(107,63,160,0.18);text-align:center;line-height:56px;font-size:24px;color:#8b5cf6;">
+                &#10084;
+              </div>
+            </td>
+            <td class="text-td" valign="top">
+              <p style="margin:0;font-family:'Lato',Arial,sans-serif;font-size:15px;color:#a89cc0;line-height:1.7;">This experience is designed to help you better understand the emotional and psychological side of recovery - not just for them, but for the people walking beside them as well.</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+
+    <tr><td class="divider-mid" style="padding:0 48px;"><div style="height:1px;background:linear-gradient(90deg,transparent,#3d2060,transparent);"></div></td></tr>
+
+    <!-- CTA -->
+    <tr>
+      <td class="cta-td" align="center" style="padding:32px 48px 16px 48px;">
+        <p style="margin:0 0 4px 0;font-family:'Lato',Arial,sans-serif;font-size:15px;color:#a89cc0;line-height:1.6;text-align:center;">If you'd like to accept this invitation,</p>
+        <p style="margin:0 0 22px 0;font-family:'Lato',Arial,sans-serif;font-size:15px;color:#a89cc0;line-height:1.6;text-align:center;">you can securely join their support circle below.</p>
+        <table class="cta-inner" role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;">
+          <tr>
+            <td align="center" style="border-radius:10px;background:linear-gradient(135deg,#7c3aed,#6d28d9);">
+              <a href="{{ params.REDIRECT }}" target="_blank"
+                 style="display:inline-block;padding:16px 64px;font-family:'Lato',Arial,sans-serif;font-size:17px;font-weight:700;color:#ffffff;text-decoration:none;letter-spacing:0.5px;border-radius:10px;">
+                Accept Invitation
+              </a>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+
+    <!-- FALLBACK CODE -->
+    <tr>
+      <td class="cta-td" align="center" style="padding:4px 48px 28px 48px;">
+        <div style="height:1px;background:linear-gradient(90deg,transparent,#3d2060,transparent);margin-bottom:24px;"></div>
+        <p style="margin:0 0 4px 0;font-family:'Lato',Arial,sans-serif;font-size:14px;color:#a89cc0;line-height:1.6;text-align:center;">Don't have Nevermore installed yet?</p>
+        <p style="margin:0 0 16px 0;font-family:'Lato',Arial,sans-serif;font-size:14px;color:#a89cc0;line-height:1.6;text-align:center;">Install the app from the App Store or Google Play, open it, tap <strong style="color:#c4b5d8;">"Have an invite code?"</strong>, and enter this code:</p>
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;">
+          <tr>
+            <td align="center" style="border-radius:8px;background:rgba(139,92,246,0.12);border:1px solid #6b3fa0;padding:14px 28px;">
+              <span style="font-family:'Courier New',Courier,monospace;font-size:18px;letter-spacing:2px;color:#e8e0f5;">{{ params.INVITE_CODE }}</span>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+
+    <!-- FOOTER -->
+    <tr>
+      <td class="footer-td" align="center" style="padding:18px 48px 36px 48px;">
+        <div style="margin-bottom:10px;font-size:16px;color:#7c3aed;">&#10084;</div>
+        <p style="margin:0 0 6px 0;font-family:'Lato',Arial,sans-serif;font-size:14px;color:#a89cc0;text-align:center;">Thank you for being someone they trust enough to invite in.</p>
+        <p style="margin:0;font-family:'Lato',Arial,sans-serif;font-size:14px;color:#7c3aed;text-align:center;">- The Nevermore Team</p>
+        <div style="margin-top:28px;height:2px;background:linear-gradient(90deg,transparent,#3d2060,#6b3fa0,#3d2060,transparent);"></div>
+      </td>
+    </tr>
+
+  </table>
+</td></tr>
+</table>
+</body>
 </html>

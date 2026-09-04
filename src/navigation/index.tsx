@@ -13,6 +13,7 @@ import { Bookmark } from './screens/Bookmark';
 import { Welcome } from './screens/Welcome';
 import { SignIn } from './screens/SignIn';
 import { SignUp } from './screens/SignUp';
+import { RedeemInviteCode } from './screens/RedeemInviteCode';
 import { ForgotPassword } from './screens/ForgotPassword';
 import { CreateNewPassword } from './screens/CreateNewPassword';
 import { SetPassword } from './screens/SetPassword';
@@ -88,6 +89,7 @@ function HomeTabs() {
         component={Home}
         options={{
           title: 'Temptations',
+          tabBarButtonTestID: 'home-tab-temptations',
           tabBarIcon: ({ color, size, focused }) => {
             const Icon = focused ? HomeActiveIcon : HomeIcon;
             return <Icon color={color} width={size} height={size} />;
@@ -99,6 +101,7 @@ function HomeTabs() {
         component={FortyDay}
         options={{
           title: '40 Day',
+          tabBarButtonTestID: 'home-tab-forty-day',
           tabBarIcon: ({ color, size, focused }) => {
             const Icon = focused ? CalendarActiveIcon : CalendarIcon;
             return <Icon color={color} width={size} height={size} />;
@@ -110,6 +113,7 @@ function HomeTabs() {
         component={Bookmark}
         options={{
           title: 'Bookmark',
+          tabBarButtonTestID: 'home-tab-bookmark',
           tabBarIcon: ({ color, size, focused }) => {
             const Icon = focused ? <BookmarkActiveIcon color={color} width={14} height={18} /> : <BookmarkIcon color={color} width={14} height={17} />;
             return Icon;
@@ -181,6 +185,13 @@ function RootStack({ initialRouteName }: { initialRouteName: string }) {
         component={SignUp}
         options={{
           title: 'Sign Up',
+        }}
+      />
+      <Stack.Screen
+        name={ScreenNames.REDEEM_INVITE_CODE}
+        component={RedeemInviteCode}
+        options={{
+          title: 'Enter Invite Code',
         }}
       />
       <Stack.Screen

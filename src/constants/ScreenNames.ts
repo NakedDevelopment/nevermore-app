@@ -28,4 +28,5 @@ export enum ScreenNames {
   TERMS_CONDITIONS = 'TermsConditions',
   HELP_SUPPORT = 'HelpSupport',
   MANAGE_INVITES = 'ManageInvites',
+  REDEEM_INVITE_CODE = 'RedeemInviteCode',
 }

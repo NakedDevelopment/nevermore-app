@@ -8,6 +8,27 @@ import { useTrialStore, syncTrialFromUserProfile } from './trialStore';
 import { useSharedAccessStore } from './sharedAccessStore';
 import { useSubscriptionStore } from './subscriptionStore';
 import { ScreenNames } from '../constants/ScreenNames';
+import { usePendingInviteStore } from './pendingInvite.store';
+import { invitationService } from '../services/invitation.service';
+
+// Redeems an invite code the user typed into RedeemInviteCode before they had
+// an account (deep-link-less "cold install" path). Accepting an invitation
+// needs an authenticated session either way, so this runs right after
+// sign-up/sign-in rather than at code-entry time. Non-fatal on failure —
+// a bad/expired code shouldn't block a normal sign-up or sign-in.
+async function redeemPendingInviteIfAny(userId: string): Promise<void> {
+  const code = usePendingInviteStore.getState().code;
+  if (!code) {
+    return;
+  }
+  try {
+    await invitationService.acceptInvitation(code, userId);
+  } catch {
+    // Swallow — invitation may have been used/expired since it was checked.
+  } finally {
+    usePendingInviteStore.getState().clear();
+  }
+}
 
 interface AuthState {
   user: Models.User<Models.Preferences> | null;
@@ -41,14 +62,15 @@ export const useAuthStore = create<AuthState>((set) => ({
       // This ensures new users start onboarding
       useOnboardingStore.getState().setCurrentStep(ScreenNames.PERMISSION);
       await syncTrialFromUserProfile(user.$id);
+      await redeemPendingInviteIfAny(user.$id);
       await useSharedAccessStore.getState().refreshSharedAccess();
       await useBookmarkStore.getState().hydrateFromBackend();
       await useFortyDayStore.getState().hydrateProgressFromBackend();
       await useSubscriptionStore.getState().checkSubscription();
       set({ user, isAuthenticated: true, isLoading: false });
     } catch (error: any) {
-      set({ 
-        error: error.message || 'Failed to sign up', 
+      set({
+        error: error.message || 'Failed to sign up',
         isLoading: false,
         isAuthenticated: false 
       });
@@ -65,6 +87,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         throw new Error('No authenticated user after sign in');
       }
       await syncTrialFromUserProfile(user.$id, { backfillTrialIfMissing: true });
+      await redeemPendingInviteIfAny(user.$id);
       await useSharedAccessStore.getState().refreshSharedAccess();
       await useBookmarkStore.getState().hydrateFromBackend();
       await useFortyDayStore.getState().hydrateProgressFromBackend();
@@ -196,6 +219,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         throw new Error('No authenticated user after magic URL session');
       }
       await syncTrialFromUserProfile(user.$id, { backfillTrialIfMissing: true });
+      await redeemPendingInviteIfAny(user.$id);
       await useSharedAccessStore.getState().refreshSharedAccess();
       await useBookmarkStore.getState().hydrateFromBackend();
       await useFortyDayStore.getState().hydrateProgressFromBackend();

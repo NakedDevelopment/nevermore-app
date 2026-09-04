@@ -1,6 +1,5 @@
 import { Cinzel_400Regular, Cinzel_600SemiBold, useFonts } from '@expo-google-fonts/cinzel';
 import { Roboto_400Regular, Roboto_500Medium, Roboto_700Bold, useFonts as useRobotoFonts } from '@expo-google-fonts/roboto';
-import { useNavigation } from '@react-navigation/native';
 import React from 'react';
 import {
   ImageBackground,
@@ -11,11 +10,11 @@ import {
   View
 } from 'react-native';
 import { Button } from '../../components/Button';
-import { ScreenNames } from '../../constants/ScreenNames';
+import { useAppNavigation } from '../../hooks/useAppNavigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export function Welcome() {
-  const navigation = useNavigation();
+  const { navigateToSignUp, navigateToSignIn, navigateToRedeemInviteCode } = useAppNavigation();
   const inset = useSafeAreaInsets();
   
   const [cinzelFontsLoaded] = useFonts({
@@ -34,11 +33,15 @@ export function Welcome() {
   }
 
   const handleCreateAccount = () => {
-    navigation.navigate(ScreenNames.SIGN_UP);
+    navigateToSignUp();
   };
 
   const handleSignIn = () => {
-    navigation.navigate(ScreenNames.SIGN_IN);
+    navigateToSignIn();
+  };
+
+  const handleRedeemInviteCode = () => {
+    navigateToRedeemInviteCode();
   };
 
   return (
@@ -57,21 +60,28 @@ export function Welcome() {
           </Text>
           
           <Button
+            testID="welcome-create-account-button"
             title="Create Account"
             onPress={handleCreateAccount}
             variant="primary"
             size="medium"
             style={styles.createAccountButton}
           />
-          
-          <View style={styles.signInContainer}>
-            <Text style={styles.signInText}>
-              Already have an account?{' '}
-              <Text style={styles.signInLink} onPress={handleSignIn}>
-                Sign In
-              </Text>
+
+          <View style={[styles.signInContainer, styles.signInRow]}>
+            <Text style={styles.signInText}>Already have an account? </Text>
+            <Text testID="welcome-sign-in-link" style={styles.signInLink} onPress={handleSignIn}>
+              Sign In
             </Text>
           </View>
+
+          <Text
+            testID="welcome-redeem-invite-code-link"
+            style={styles.redeemInviteLink}
+            onPress={handleRedeemInviteCode}
+          >
+            Have an invite code?
+          </Text>
         </View>
       </ImageBackground>
     </View>
@@ -119,6 +129,9 @@ const styles = StyleSheet.create({
   signInContainer: {
     alignItems: 'center',
   },
+  signInRow: {
+    flexDirection: 'row',
+  },
   signInText: {
     fontFamily: 'Roboto_400Regular',
     color: '#FFFFFF',
@@ -128,5 +141,13 @@ const styles = StyleSheet.create({
   signInLink: {
     fontFamily: 'Roboto_500Medium',
     color: '#8A2BE2',
+  },
+  redeemInviteLink: {
+    fontFamily: 'Roboto_400Regular',
+    color: '#FFFFFF',
+    fontSize: 14,
+    textAlign: 'center',
+    marginTop: 16,
+    textDecorationLine: 'underline',
   },
 });
