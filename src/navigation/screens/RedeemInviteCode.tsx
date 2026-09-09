@@ -15,21 +15,36 @@ import ArrowLeftIcon from '../../assets/icons/arrow-left';
 import { Button } from '../../components/Button';
 import { Input } from '../../components/Input';
 import { useAppNavigation } from '../../hooks/useAppNavigation';
-import { invitationService } from '../../services/invitation.service';
+import { codeRedemptionService } from '../../services/codeRedemption.service';
 import { usePendingInviteStore } from '../../store/pendingInvite.store';
 
-// Entry point for someone who received an invitation email. Acceptance no
-// longer depends on a deep link surviving the app-store round trip — the
-// recipient installs Nevermore, opens it, and types the code from the email
-// here instead. Redemption happens automatically right after they sign
-// up/in (see authStore) since accepting an invitation requires an
-// authenticated session either way, so the code is held in pendingInvite.store
-// until then and the user never has to re-enter it.
-const ERROR_MESSAGES: Record<string, string> = {
+// Entry point for someone who received either a subscriber's shared-access
+// invitation or an administrator-issued access code (pilot/research/bulk/
+// promo) — the recipient never has to know which. Acceptance no longer
+// depends on a deep link surviving the app-store round trip: the recipient
+// installs Nevermore, opens it, and types the code from their email here
+// instead. Redemption happens automatically right after they sign up/in (see
+// authStore) since accepting either kind of code requires an authenticated
+// session either way, so the code is held in pendingInvite.store until then
+// and the user never has to re-enter it.
+const INVITATION_ERROR_MESSAGES: Record<string, string> = {
   not_found: 'The code entered could not be found. Please check the code and try again.',
   expired: 'This invitation has expired. Please ask the subscriber to send you a new invitation.',
   accepted: 'This invitation has already been accepted.',
   revoked: 'This invitation is no longer active. Please contact the person who invited you.',
+  invalid: 'Enter the invitation code from your email.',
+};
+
+const ACCESS_CODE_ERROR_MESSAGES: Record<string, string> = {
+  not_found: 'The code entered could not be found. Please check the code and try again.',
+  expired: 'This code has expired. Please request a new one.',
+  redemption_limit: 'This code has already been used.',
+  inactive: 'This code is no longer active. Please contact whoever provided it.',
+  invalid: 'Enter the code from your email.',
+};
+
+const GENERIC_ERROR_MESSAGES: Record<string, string> = {
+  not_found: 'The code entered could not be found. Please check the code and try again.',
   invalid: 'Enter the invitation code from your email.',
 };
 
@@ -44,24 +59,29 @@ export function RedeemInviteCode() {
   // authentication happens, so it can be redeemed automatically afterward.
   const validateAndStoreCode = async (): Promise<boolean> => {
     if (!code.trim()) {
-      setErrorMessage(ERROR_MESSAGES.invalid);
+      setErrorMessage(GENERIC_ERROR_MESSAGES.invalid);
       return false;
     }
 
     setErrorMessage('');
     setIsChecking(true);
     try {
-      const result = await invitationService.validateInvitationCode(code);
+      const result = await codeRedemptionService.classifyCode(code);
 
       if (!result.ok) {
-        setErrorMessage(ERROR_MESSAGES[result.reason]);
+        const messages = result.kind === 'invitation'
+          ? INVITATION_ERROR_MESSAGES
+          : result.kind === 'access_code'
+            ? ACCESS_CODE_ERROR_MESSAGES
+            : GENERIC_ERROR_MESSAGES;
+        setErrorMessage(messages[result.reason]);
         return false;
       }
 
       // Store the canonical code from the record, not the user's raw input,
       // so casing/whitespace differences can't cause a mismatch when
       // authStore redeems it after sign-up/sign-in.
-      usePendingInviteStore.getState().setCode(result.invitation.invitationToken);
+      usePendingInviteStore.getState().setCode(result.code);
       return true;
     } catch {
       setErrorMessage('Something went wrong checking that code. Please try again.');

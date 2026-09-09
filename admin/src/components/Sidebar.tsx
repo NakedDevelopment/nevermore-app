@@ -2,6 +2,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { UserProfile } from './UserProfile';
 import ContentManagementIcon from '../assets/icons/content-management';
 import SettingsIcon from '../assets/icons/settings';
+import AccessCodesIcon from '../assets/icons/access-codes';
 import SignOutIcon from '../assets/icons/sign-out';
 import { useStore } from '../store';
 import { showSuccess } from '../lib/notifications';
@@ -11,6 +12,11 @@ const navigationItems = [
     path: '/content-management',
     name: 'Content Management',
     icon: ContentManagementIcon,
+  },
+  {
+    path: '/access-codes',
+    name: 'Access Codes',
+    icon: AccessCodesIcon,
   },
   {
     path: '/settings',

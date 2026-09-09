@@ -10,6 +10,7 @@ import { LinkSent } from '../pages/LinkSent';
 import { Success } from '../pages/Success';
 import { CreateNewPassword } from '../pages/CreateNewPassword';
 import { ContentManagement } from '../pages/ContentManagement';
+import { AccessCodes } from '../pages/AccessCodes';
 import { Journey40Day } from '../pages/Journey40Day';
 import { TemptationDetails } from '../pages/TemptationDetails';
 import { CreateTemptation } from '../pages/CreateTemptation';
@@ -175,6 +176,24 @@ export const router = createBrowserRouter([
       {
         index: true,
         element: <Settings />,
+      },
+      {
+        path: '*',
+        element: <NotFound />,
+      },
+    ],
+  },
+  {
+    path: '/access-codes',
+    element: (
+      <ProtectedRoute>
+        <Layout />
+      </ProtectedRoute>
+    ),
+    children: [
+      {
+        index: true,
+        element: <AccessCodes />,
       },
       {
         path: '*',

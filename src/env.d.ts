@@ -9,6 +9,10 @@ declare module '@env' {
   export const APPWRITE_SETTINGS_COLLECTION_ID: string;
   export const APPWRITE_INVITATIONS_COLLECTION_ID: string;
   export const APPWRITE_INVITATION_FUNCTION_ID: string;
+  export const APPWRITE_ACCESS_CODES_COLLECTION_ID: string;
+  export const APPWRITE_ACCESS_CODE_REDEMPTIONS_COLLECTION_ID: string;
+  export const APPWRITE_ACCESS_CODE_REDEMPTION_FUNCTION_ID: string;
+  export const APPWRITE_VALIDATE_CODE_FUNCTION_ID: string;
   export const APPWRITE_WELCOME_QUOTE_COLLECTION_ID: string;
   export const APPWRITE_PASSWORD_RESET_FUNCTION_ID: string;
   export const APPWRITE_MAGIC_URL_FUNCTION_ID: string;

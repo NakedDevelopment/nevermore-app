@@ -6,30 +6,39 @@ import { useFortyDayStore } from './fortyDayStore';
 import { useOnboardingStore } from './onboardingStore';
 import { useTrialStore, syncTrialFromUserProfile } from './trialStore';
 import { useSharedAccessStore } from './sharedAccessStore';
+import { useAdminAccessStore } from './adminAccessStore';
 import { useSubscriptionStore } from './subscriptionStore';
 import { ScreenNames } from '../constants/ScreenNames';
 import { usePendingInviteStore } from './pendingInvite.store';
-import { invitationService } from '../services/invitation.service';
+import { codeRedemptionService } from '../services/codeRedemption.service';
 import { showSuccessNotification } from '../services/notifications';
 
-// Redeems an invite code the user typed into RedeemInviteCode before they had
-// an account. Accepting an invitation needs an authenticated session either
-// way, so this runs right after sign-up/sign-in rather than at code-entry
-// time. Non-fatal on failure — a bad/expired code shouldn't block a normal
-// sign-up or sign-in.
-async function redeemPendingInviteIfAny(userId: string): Promise<void> {
+// Redeems a code the user typed into RedeemInviteCode before they had an
+// account — either a subscriber's shared-access invitation or an
+// administrator-issued access code; codeRedemptionService figures out which.
+// Redeeming either needs an authenticated session either way, so this runs
+// right after sign-up/sign-in rather than at code-entry time. Non-fatal on
+// failure — a bad/expired code shouldn't block a normal sign-up or sign-in.
+async function redeemPendingCodeIfAny(userId: string): Promise<void> {
   const code = usePendingInviteStore.getState().code;
   if (!code) {
     return;
   }
   try {
-    await invitationService.acceptInvitation(code, userId);
-    showSuccessNotification(
-      "You've successfully joined their Nevermore support circle.",
-      'Invitation Accepted'
-    );
+    const result = await codeRedemptionService.redeemCode(code, userId);
+    if (result.ok && result.kind === 'invitation') {
+      showSuccessNotification(
+        "You've successfully joined their Nevermore support circle.",
+        'Invitation Accepted'
+      );
+    } else if (result.ok && result.kind === 'access_code') {
+      showSuccessNotification(
+        'Your access has been activated.',
+        'Access Granted'
+      );
+    }
   } catch {
-    // Swallow — invitation may have been used/expired since it was checked.
+    // Swallow — the code may have been used/expired/deactivated since it was checked.
   } finally {
     usePendingInviteStore.getState().clear();
   }
@@ -67,8 +76,9 @@ export const useAuthStore = create<AuthState>((set) => ({
       // This ensures new users start onboarding
       useOnboardingStore.getState().setCurrentStep(ScreenNames.PERMISSION);
       await syncTrialFromUserProfile(user.$id);
-      await redeemPendingInviteIfAny(user.$id);
+      await redeemPendingCodeIfAny(user.$id);
       await useSharedAccessStore.getState().refreshSharedAccess();
+      await useAdminAccessStore.getState().refreshAdminAccess();
       await useBookmarkStore.getState().hydrateFromBackend();
       await useFortyDayStore.getState().hydrateProgressFromBackend();
       await useSubscriptionStore.getState().checkSubscription();
@@ -92,8 +102,9 @@ export const useAuthStore = create<AuthState>((set) => ({
         throw new Error('No authenticated user after sign in');
       }
       await syncTrialFromUserProfile(user.$id, { backfillTrialIfMissing: true });
-      await redeemPendingInviteIfAny(user.$id);
+      await redeemPendingCodeIfAny(user.$id);
       await useSharedAccessStore.getState().refreshSharedAccess();
+      await useAdminAccessStore.getState().refreshAdminAccess();
       await useBookmarkStore.getState().hydrateFromBackend();
       await useFortyDayStore.getState().hydrateProgressFromBackend();
       await useSubscriptionStore.getState().checkSubscription();
@@ -121,12 +132,14 @@ export const useAuthStore = create<AuthState>((set) => ({
       useOnboardingStore.getState().resetOnboarding();
       useTrialStore.getState().resetTrial();
       useSharedAccessStore.getState().clearSharedAccess();
+      useAdminAccessStore.getState().clearAdminAccess();
       useSubscriptionStore.getState().resetSubscriptionState();
 
       set({ user: null, isAuthenticated: false, isLoading: false });
     } catch (error: any) {
       await import('../contexts/AudioPlayerProvider').then(({ stopAllAudioPlayback }) => stopAllAudioPlayback());
       useSharedAccessStore.getState().clearSharedAccess();
+      useAdminAccessStore.getState().clearAdminAccess();
       set({
         error: error.message || 'Failed to sign out',
         isLoading: false
@@ -147,6 +160,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       useOnboardingStore.getState().resetOnboarding();
       useTrialStore.getState().resetTrial();
       useSharedAccessStore.getState().clearSharedAccess();
+      useAdminAccessStore.getState().clearAdminAccess();
       useSubscriptionStore.getState().resetSubscriptionState();
 
       set({ user: null, isAuthenticated: false, isLoading: false });
@@ -166,6 +180,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       if (user) {
         await syncTrialFromUserProfile(user.$id, { backfillTrialIfMissing: true });
         await useSharedAccessStore.getState().refreshSharedAccess();
+        await useAdminAccessStore.getState().refreshAdminAccess();
         await useBookmarkStore.getState().hydrateFromBackend();
         await useFortyDayStore.getState().hydrateProgressFromBackend();
         await useSubscriptionStore.getState().checkSubscription();
@@ -173,6 +188,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       } else {
         await import('../contexts/AudioPlayerProvider').then(({ stopAllAudioPlayback }) => stopAllAudioPlayback());
         useSharedAccessStore.getState().clearSharedAccess();
+        useAdminAccessStore.getState().clearAdminAccess();
         useSubscriptionStore.getState().resetSubscriptionState();
         set({ user: null, isAuthenticated: false, isLoading: false });
       }
@@ -224,8 +240,9 @@ export const useAuthStore = create<AuthState>((set) => ({
         throw new Error('No authenticated user after magic URL session');
       }
       await syncTrialFromUserProfile(user.$id, { backfillTrialIfMissing: true });
-      await redeemPendingInviteIfAny(user.$id);
+      await redeemPendingCodeIfAny(user.$id);
       await useSharedAccessStore.getState().refreshSharedAccess();
+      await useAdminAccessStore.getState().refreshAdminAccess();
       await useBookmarkStore.getState().hydrateFromBackend();
       await useFortyDayStore.getState().hydrateProgressFromBackend();
       await useSubscriptionStore.getState().checkSubscription();

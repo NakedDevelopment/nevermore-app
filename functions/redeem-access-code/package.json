@@ -1,0 +1,9 @@
+{
+  "name": "redeem-access-code",
+  "version": "1.0.0",
+  "type": "commonjs",
+  "main": "src/main.js",
+  "dependencies": {
+    "node-appwrite": "^18.0.0"
+  }
+}
