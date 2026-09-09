@@ -10,12 +10,13 @@ import { useSubscriptionStore } from './subscriptionStore';
 import { ScreenNames } from '../constants/ScreenNames';
 import { usePendingInviteStore } from './pendingInvite.store';
 import { invitationService } from '../services/invitation.service';
+import { showSuccessNotification } from '../services/notifications';
 
 // Redeems an invite code the user typed into RedeemInviteCode before they had
-// an account (deep-link-less "cold install" path). Accepting an invitation
-// needs an authenticated session either way, so this runs right after
-// sign-up/sign-in rather than at code-entry time. Non-fatal on failure —
-// a bad/expired code shouldn't block a normal sign-up or sign-in.
+// an account. Accepting an invitation needs an authenticated session either
+// way, so this runs right after sign-up/sign-in rather than at code-entry
+// time. Non-fatal on failure — a bad/expired code shouldn't block a normal
+// sign-up or sign-in.
 async function redeemPendingInviteIfAny(userId: string): Promise<void> {
   const code = usePendingInviteStore.getState().code;
   if (!code) {
@@ -23,6 +24,10 @@ async function redeemPendingInviteIfAny(userId: string): Promise<void> {
   }
   try {
     await invitationService.acceptInvitation(code, userId);
+    showSuccessNotification(
+      "You've successfully joined their Nevermore support circle.",
+      'Invitation Accepted'
+    );
   } catch {
     // Swallow — invitation may have been used/expired since it was checked.
   } finally {
@@ -35,7 +40,7 @@ interface AuthState {
   isLoading: boolean;
   isAuthenticated: boolean;
   error: string | null;
-  
+
   // Actions
   signUp: (email: string, password: string, name?: string, nickname?: string, type?: string) => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
@@ -72,7 +77,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       set({
         error: error.message || 'Failed to sign up',
         isLoading: false,
-        isAuthenticated: false 
+        isAuthenticated: false
       });
       throw error;
     }
@@ -96,10 +101,10 @@ export const useAuthStore = create<AuthState>((set) => ({
       useOnboardingStore.getState().completeOnboarding();
       set({ user, isAuthenticated: true, isLoading: false });
     } catch (error: any) {
-      set({ 
-        error: error.message || 'Failed to sign in', 
+      set({
+        error: error.message || 'Failed to sign in',
         isLoading: false,
-        isAuthenticated: false 
+        isAuthenticated: false
       });
       throw error;
     }
@@ -111,20 +116,20 @@ export const useAuthStore = create<AuthState>((set) => ({
       await import('../contexts/AudioPlayerProvider').then(({ stopAllAudioPlayback }) => stopAllAudioPlayback());
       await authService.signOut();
       await import('../services/iap.service').then(({ iapService }) => iapService.logOut());
-      
+
       // Clear onboarding state on sign out
       useOnboardingStore.getState().resetOnboarding();
       useTrialStore.getState().resetTrial();
       useSharedAccessStore.getState().clearSharedAccess();
       useSubscriptionStore.getState().resetSubscriptionState();
-      
+
       set({ user: null, isAuthenticated: false, isLoading: false });
     } catch (error: any) {
       await import('../contexts/AudioPlayerProvider').then(({ stopAllAudioPlayback }) => stopAllAudioPlayback());
       useSharedAccessStore.getState().clearSharedAccess();
-      set({ 
-        error: error.message || 'Failed to sign out', 
-        isLoading: false 
+      set({
+        error: error.message || 'Failed to sign out',
+        isLoading: false
       });
       set({ user: null, isAuthenticated: false });
     }
@@ -136,19 +141,19 @@ export const useAuthStore = create<AuthState>((set) => ({
       await import('../contexts/AudioPlayerProvider').then(({ stopAllAudioPlayback }) => stopAllAudioPlayback());
       await authService.deleteAccount();
       await import('../services/iap.service').then(({ iapService }) => iapService.logOut());
-      
+
       useBookmarkStore.getState().clearBookmarks();
       useFortyDayStore.getState().clearProgress();
       useOnboardingStore.getState().resetOnboarding();
       useTrialStore.getState().resetTrial();
       useSharedAccessStore.getState().clearSharedAccess();
       useSubscriptionStore.getState().resetSubscriptionState();
-      
+
       set({ user: null, isAuthenticated: false, isLoading: false });
     } catch (error: any) {
-      set({ 
-        error: error.message || 'Failed to delete account', 
-        isLoading: false 
+      set({
+        error: error.message || 'Failed to delete account',
+        isLoading: false
       });
       throw error;
     }
@@ -188,9 +193,9 @@ export const useAuthStore = create<AuthState>((set) => ({
       await authService.createPasswordRecovery(email);
       set({ isLoading: false });
     } catch (error: any) {
-      set({ 
-        error: error.message || 'Failed to send recovery email', 
-        isLoading: false 
+      set({
+        error: error.message || 'Failed to send recovery email',
+        isLoading: false
       });
       throw error;
     }
@@ -202,9 +207,9 @@ export const useAuthStore = create<AuthState>((set) => ({
       await authService.createMagicURLToken(email);
       set({ isLoading: false });
     } catch (error: any) {
-      set({ 
-        error: error.message || 'Failed to send magic URL email', 
-        isLoading: false 
+      set({
+        error: error.message || 'Failed to send magic URL email',
+        isLoading: false
       });
       throw error;
     }
@@ -228,10 +233,10 @@ export const useAuthStore = create<AuthState>((set) => ({
       useOnboardingStore.getState().completeOnboarding();
       set({ user, isAuthenticated: true, isLoading: false });
     } catch (error: any) {
-      set({ 
-        error: error.message || 'Failed to create session', 
+      set({
+        error: error.message || 'Failed to create session',
         isLoading: false,
-        isAuthenticated: false 
+        isAuthenticated: false
       });
       throw error;
     }

@@ -1,12 +1,16 @@
-const { Client, Users, Query, ID } = require('node-appwrite');
+// Sends the Nevermore invitation email through Brevo. The invitation code is
+// generated and stored by the app before this function ever runs (see
+// invitation.service.ts) — this function's only job is delivering it. It no
+// longer creates an Appwrite user or login token: redemption now happens by
+// the recipient typing the code into "Enter Invitation Code" after they
+// install and sign up/in, not by tapping a deep link, so there's nothing
+// here that needs an authenticated session to exist ahead of time.
+//
+// The App Store / Google Play links are hardcoded directly in the Brevo
+// template (not passed as params) — Brevo is the source of truth for
+// template #1's HTML; see email-templates/support-network-invitation.html.
 
-// The recipient normally does NOT have Nevermore installed when the invite
-// arrives, so the token has to outlive: read email -> tap -> app store ->
-// install -> open -> accept.
-const TOKEN_LENGTH = 6;
-const TOKEN_EXPIRY_SECONDS = 60 * 60 * 24 * 7; // 7 days
-
-module.exports = async ({ req, res, log, error }) => {
+module.exports = async ({ req, res, error }) => {
   let payload = {};
   try {
     payload = req.body ? JSON.parse(req.body) : {};
@@ -14,10 +18,10 @@ module.exports = async ({ req, res, log, error }) => {
     return res.json({ success: false, message: 'Invalid JSON payload' }, 400);
   }
 
-  const { email, deepLink, firstName } = payload;
+  const { email, inviteCode, firstName } = payload;
 
-  if (!email || !deepLink) {
-    return res.json({ success: false, message: 'email and deepLink are required' }, 400);
+  if (!email || !inviteCode) {
+    return res.json({ success: false, message: 'email and inviteCode are required' }, 400);
   }
 
   const brevoApiKey = process.env.BREVO_API_KEY;
@@ -37,68 +41,6 @@ module.exports = async ({ req, res, log, error }) => {
     return res.json({ success: false, message: 'Email template is not configured' }, 500);
   }
 
-  const endpoint = process.env.APPWRITE_FUNCTION_API_ENDPOINT;
-  const projectId = process.env.APPWRITE_FUNCTION_PROJECT_ID;
-  const dynamicKeyRaw = process.env.APPWRITE_API_KEY || req.headers['x-appwrite-key'] || '';
-  const dynamicKey = Array.isArray(dynamicKeyRaw) ? String(dynamicKeyRaw[0] || '') : String(dynamicKeyRaw);
-
-  log(`Config check: endpoint=${JSON.stringify(endpoint)} projectId=${JSON.stringify(projectId)} usingStaticKey=${!!process.env.APPWRITE_API_KEY} keyLen=${dynamicKey.length}`);
-
-  let client;
-  try {
-    client = new Client()
-      .setEndpoint(endpoint)
-      .setProject(projectId)
-      .setKey(dynamicKey);
-  } catch (err) {
-    error('Failed to construct Appwrite client: ' + err.message);
-    return res.json({ success: false, message: 'Failed to configure Appwrite client', debug: err.message }, 500);
-  }
-
-  const users = new Users(client);
-
-  let userId;
-  try {
-    const existing = await users.list([Query.equal('email', email)]);
-    if (existing.total > 0) {
-      userId = existing.users[0].$id;
-    } else {
-      const created = await users.create(ID.unique(), email);
-      userId = created.$id;
-    }
-  } catch (err) {
-    error('Failed to find or create invitee user: ' + err.message + ' | cause: ' + JSON.stringify(err.cause) + ' | code: ' + err.code + ' | type: ' + err.type);
-    return res.json({ success: false, message: 'Failed to prepare invitee account', debug: { message: err.message, cause: err.cause ? String(err.cause) : null, code: err.code, type: err.type } }, 500);
-  }
-
-  let secret;
-  try {
-    // Explicit lifetime. Appwrite's server-side default is 15 minutes, which
-    // expires while the recipient is still installing the app from the store,
-    // leaving them with a dead invite link.
-    const token = await users.createToken(userId, TOKEN_LENGTH, TOKEN_EXPIRY_SECONDS);
-    secret = token.secret;
-  } catch (err) {
-    error('Failed to create login token: ' + err.message);
-    return res.json({ success: false, message: 'Failed to create invitation token', debug: err.message }, 500);
-  }
-
-  const separator = deepLink.includes('?') ? '&' : '?';
-  const redirect = `${deepLink}${separator}userId=${encodeURIComponent(userId)}&secret=${encodeURIComponent(secret)}`;
-
-  // The recipient normally does NOT have the app installed, so the Universal
-  // Link/App Link in REDIRECT can't survive the store install round-trip.
-  // Surface the raw invitation token as a plain-text code too, so they can
-  // install fresh, open the app, and paste it into "Enter Invite Code"
-  // instead of depending on deferred deep linking (which iOS has no
-  // reliable mechanism for without a paid attribution service).
-  let inviteCode = '';
-  try {
-    inviteCode = new URL(deepLink).searchParams.get('token') || '';
-  } catch {
-    // Malformed deepLink — fall back to no code rather than fail the send.
-  }
-
   try {
     const emailResponse = await fetch('https://api.brevo.com/v3/smtp/email', {
       method: 'POST',
@@ -112,7 +54,6 @@ module.exports = async ({ req, res, log, error }) => {
         templateId: brevoTemplateId,
         params: {
           FIRSTNAME: firstName || 'there',
-          REDIRECT: redirect,
           INVITE_CODE: inviteCode,
         },
       }),
@@ -128,7 +69,5 @@ module.exports = async ({ req, res, log, error }) => {
     return res.json({ success: false, message: 'Failed to send invitation email' }, 500);
   }
 
-  log(`Invitation email sent to ${email} via Brevo template ${brevoTemplateId}`);
-
-  return res.json({ success: true, userId });
+  return res.json({ success: true });
 };

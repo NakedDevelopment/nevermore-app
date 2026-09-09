@@ -1,6 +1,6 @@
-import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import {
     ActivityIndicator,
     Dimensions,
@@ -10,9 +10,6 @@ import {
     Text,
     TouchableOpacity,
     View,
-    Alert,
-    Linking,
-    Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -28,26 +25,12 @@ import VolumeIcon from '../../assets/icons/volume';
 import { Button } from '../../components/Button';
 import { SecondaryButton } from '../../components/SecondaryButton';
 import { ScreenNames } from '../../constants/ScreenNames';
-import { invitationService } from '../../services/invitation.service';
-import { account } from '../../services/appwrite.config';
-import { userProfileService } from '../../services/userProfile.service';
-import { getCurrentUser } from '../../services/auth.service';
-import { LoadingSpinner } from '../../components/LoadingSpinner';
-import { showAppwriteError, showSuccessNotification } from '../../services/notifications';
 import { useAppNavigation } from '../../hooks/useAppNavigation';
 import { useWelcomeQuote } from '../../hooks/useWelcomeQuote';
 import { useOnboardingStore } from '../../store/onboardingStore';
-import { useAuthStore } from '../../store/authStore';
-import { useSharedAccessStore } from '../../store/sharedAccessStore';
 
 type RootStackParamList = {
-  [ScreenNames.INVITE]: {
-    token?: string;
-    userId?: string;
-    secret?: string;
-    expire?: string;
-    project?: string;
-  } | undefined;
+  [ScreenNames.INVITE]: undefined;
   [ScreenNames.INVITE_SEND]: undefined;
   [ScreenNames.HOME_TABS]: undefined;
   [ScreenNames.TRIAL_WELCOME]: undefined;
@@ -55,210 +38,21 @@ type RootStackParamList = {
   [ScreenNames.SET_PASSWORD]: undefined;
 };
 
-type InviteRouteProp = RouteProp<RootStackParamList, ScreenNames.INVITE>;
 type InviteNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
+// Onboarding step explaining shared-subscription invites to the inviter
+// ("HOW IT WORKS" -> InviteSend). Accepting an invitation as the recipient
+// happens on RedeemInviteCode + sign-up/sign-in instead — this screen no
+// longer doubles as a deep-link landing page.
 export function Invite() {
     const navigation = useNavigation<InviteNavigationProp>();
-    const route = useRoute<InviteRouteProp>();
     const { navigateToInviteSend } = useAppNavigation();
     const { quote, loading: quoteLoading } = useWelcomeQuote();
     const { setCurrentStep } = useOnboardingStore();
-    const { checkAuth, signOut } = useAuthStore();
-    const { refreshSharedAccess } = useSharedAccessStore();
-    
-    const [isLoading, setIsLoading] = useState(false);
-    const [isProcessingInvitation, setIsProcessingInvitation] = useState(false);
-    
+
     const width = Dimensions.get('window').width;
     const height = Dimensions.get('window').height;
     const bg = useImage(require('../../assets/gradient.png'));
-
-    const token = route.params?.token;
-    const userId = route.params?.userId;
-    const secret = route.params?.secret;
-    const isFromDeepLink = !!(token && userId && secret);
-
-    useEffect(() => {
-        if (isFromDeepLink) {
-            handleInvitationAcceptance();
-        }
-    }, [isFromDeepLink]);
-
-    const resetToSignUp = async () => {
-        try {
-            await signOut();
-        } catch {
-            try {
-                await account.deleteSession('current');
-            } catch {
-                // No active session to clear.
-            }
-        }
-
-        navigation.reset({
-            index: 0,
-            routes: [{ name: ScreenNames.SIGN_UP }],
-        });
-    };
-
-    const handleInvitationAcceptance = async () => {
-        // Validate that we have all required parameters from the Magic URL
-        if (!token || !userId || !secret) {
-            Alert.alert(
-                'Invalid Invitation Link',
-                'This invitation link is invalid or incomplete. Please request a new invitation.',
-                [
-                    {
-                        text: 'OK',
-                        onPress: resetToSignUp,
-                    },
-                ]
-            );
-            return;
-        }
-
-        setIsProcessingInvitation(true);
-
-        try {
-            // Create session using Magic URL credentials before reading the invitation.
-            // Appwrite table permissions may require an authenticated user for invite lookup.
-            try {
-                try {
-                    await account.getSession('current');
-                    await account.deleteSession('current');
-                } catch {
-                    // No existing session to clear.
-                }
-
-                await account.createSession({
-                    userId,
-                    secret,
-                });
-                
-                // Get user after session creation
-                const user = await getCurrentUser();
-                
-                if (!user) {
-                    throw new Error('Failed to retrieve user after session creation');
-                }
-
-                let invitation = await invitationService.getInvitationByToken(token);
-                if (!invitation && user.email) {
-                    invitation = await invitationService.getPendingInvitationByEmail(user.email);
-                }
-                
-                if (!invitation) {
-                    Alert.alert(
-                        'Invalid Invitation',
-                        'This invitation link is invalid or has expired. Please request a new invitation.',
-                        [
-                            {
-                                text: 'OK',
-                                onPress: resetToSignUp,
-                            },
-                        ]
-                    );
-                    return;
-                }
-
-                if (invitation.status !== 'pending') {
-                    Alert.alert(
-                        'Invitation Already Used',
-                        `This invitation has already been ${invitation.status}.`,
-                        [
-                            {
-                                text: 'OK',
-                                onPress: resetToSignUp,
-                            },
-                        ]
-                    );
-                    return;
-                }
-
-                // Update auth store
-                await checkAuth();
-                
-                // Create or get user profile
-                let userProfile = null;
-                let isNewUser = false;
-                try {
-                    userProfile = await userProfileService.getUserProfileByAuthId(user.$id);
-                    if (!userProfile) {
-                        isNewUser = true;
-                        // Create user profile with default values
-                        await userProfileService.createUserProfile({
-                            auth_id: user.$id,
-                            full_name: user.name || user.email?.split('@')[0] || '',
-                            nickname: '',
-                            type: 'patient',
-                        });
-                    }
-                } catch (profileError: any) {
-                    // Profile creation/check failed, but session is created - don't block login
-                    console.error('User profile check/create error:', profileError);
-                }
-                
-                // Mark invitation as accepted
-                try {
-                    await invitationService.acceptInvitationRecord(invitation, user.$id);
-                    if (user.email) {
-                        await invitationService.acceptInvitationByEmail(user.email);
-                    }
-                    await refreshSharedAccess();
-                } catch (acceptError) {
-                    console.error('Failed to mark invitation as accepted:', acceptError);
-                }
-                
-                showSuccessNotification(
-                    'Invitation accepted! Welcome to Nevermore.',
-                    'Success'
-                );
-                
-                // Route based on user type
-                if (isNewUser) {
-                    // New user - needs to set password and go through onboarding
-                    navigation.reset({
-                        index: 0,
-                        routes: [{ name: ScreenNames.SET_PASSWORD }],
-                    });
-                } else {
-                    // Existing invited users already have shared access; skip trial/paywall screens.
-                    navigation.reset({
-                        index: 0,
-                        routes: [{ name: ScreenNames.HOME_TABS }],
-                    });
-                }
-            } catch (sessionError: any) {
-                // Session creation failed - the magic URL may have expired or been used
-                console.error('Session creation error:', sessionError);
-                
-                Alert.alert(
-                    'Invitation Link Expired',
-                    'This magic link has expired or has already been used. Please request a new invitation or sign up manually.',
-                    [
-                        {
-                            text: 'Sign Up',
-                            onPress: resetToSignUp,
-                        },
-                    ]
-                );
-            }
-        } catch (error: unknown) {
-            console.error('Invitation acceptance error:', error);
-            showAppwriteError(error, {
-                title: 'Failed to Process Invitation',
-                skipUnauthorized: true,
-            });
-            
-            // On error, redirect to sign up
-            setTimeout(() => {
-                resetToSignUp();
-            }, 2000);
-        } finally {
-            setIsProcessingInvitation(false);
-        }
-    };
 
     const handleNext = () => {
         setCurrentStep(ScreenNames.INVITE_SEND);
@@ -269,23 +63,6 @@ export function Invite() {
         setCurrentStep(ScreenNames.TRIAL_WELCOME);
         navigation.navigate(ScreenNames.TRIAL_WELCOME);
     };
-
-    if (isProcessingInvitation) {
-        return (
-            <View style={styles.container}>
-                <StatusBar barStyle="light-content" backgroundColor="#000000" />
-                <Canvas style={styles.canvas}>
-                    <SkiaImage image={bg} x={0} y={0} width={width} height={height} fit="cover" />
-                </Canvas>
-                <SafeAreaView style={styles.safeArea}>
-                    <View style={styles.loadingContainer}>
-                        <LoadingSpinner />
-                        <Text style={styles.loadingText}>Processing invitation...</Text>
-                    </View>
-                </SafeAreaView>
-            </View>
-        );
-    }
 
     return (
         <View style={styles.container}>
@@ -356,6 +133,7 @@ export function Invite() {
 
                     <View style={styles.buttonContainer}>
                         <Button
+                            testID="invite-next-button"
                             title="Next"
                             onPress={handleNext}
                             variant="primary"
@@ -363,6 +141,7 @@ export function Invite() {
                             style={styles.nextButton}
                         />
                         <SecondaryButton
+                            testID="invite-skip-button"
                             title="Skip"
                             onPress={handleSkip}
                             size="medium"
@@ -496,16 +275,5 @@ const styles = StyleSheet.create({
     },
     skipButtonText: {
         color: '#8B5CF6',
-    },
-    loadingContainer: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    loadingText: {
-        marginTop: 16,
-        fontSize: 16,
-        color: '#ffffff',
-        fontFamily: 'Roboto_400Regular',
     },
 });

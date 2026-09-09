@@ -18,46 +18,68 @@ import { useAppNavigation } from '../../hooks/useAppNavigation';
 import { invitationService } from '../../services/invitation.service';
 import { usePendingInviteStore } from '../../store/pendingInvite.store';
 
-// Entry point for someone who received an invite email but installed the app
-// fresh from the store, so the original deep link (userId + secret + token)
-// never reached the app. They copy the plain-text code from the email here
-// instead; redemption happens automatically right after they sign up/in
-// (see authStore) since accepting an invitation requires an authenticated
-// session either way.
+// Entry point for someone who received an invitation email. Acceptance no
+// longer depends on a deep link surviving the app-store round trip — the
+// recipient installs Nevermore, opens it, and types the code from the email
+// here instead. Redemption happens automatically right after they sign
+// up/in (see authStore) since accepting an invitation requires an
+// authenticated session either way, so the code is held in pendingInvite.store
+// until then and the user never has to re-enter it.
+const ERROR_MESSAGES: Record<string, string> = {
+  not_found: 'The code entered could not be found. Please check the code and try again.',
+  expired: 'This invitation has expired. Please ask the subscriber to send you a new invitation.',
+  accepted: 'This invitation has already been accepted.',
+  revoked: 'This invitation is no longer active. Please contact the person who invited you.',
+  invalid: 'Enter the invitation code from your email.',
+};
+
 export function RedeemInviteCode() {
   const { goBack, navigateToSignUp, navigateToSignIn } = useAppNavigation();
   const [code, setCode] = useState('');
   const [isChecking, setIsChecking] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
-  const handleContinue = async () => {
-    const trimmed = code.trim();
-    if (!trimmed) {
-      setErrorMessage('Enter the invite code from your email.');
-      return;
+  // Shared by both "Continue" (new account) and "Sign In" (existing
+  // account) — either way the code must be validated and stashed before
+  // authentication happens, so it can be redeemed automatically afterward.
+  const validateAndStoreCode = async (): Promise<boolean> => {
+    if (!code.trim()) {
+      setErrorMessage(ERROR_MESSAGES.invalid);
+      return false;
     }
 
     setErrorMessage('');
     setIsChecking(true);
     try {
-      const invitation = await invitationService.getInvitationByToken(trimmed);
+      const result = await invitationService.validateInvitationCode(code);
 
-      if (!invitation) {
-        setErrorMessage('That code doesn\'t match an invitation. Double-check it and try again.');
-        return;
+      if (!result.ok) {
+        setErrorMessage(ERROR_MESSAGES[result.reason]);
+        return false;
       }
 
-      if (invitation.status !== 'pending') {
-        setErrorMessage(`This invitation has already been ${invitation.status}.`);
-        return;
-      }
-
-      usePendingInviteStore.getState().setCode(trimmed);
-      navigateToSignUp();
+      // Store the canonical code from the record, not the user's raw input,
+      // so casing/whitespace differences can't cause a mismatch when
+      // authStore redeems it after sign-up/sign-in.
+      usePendingInviteStore.getState().setCode(result.invitation.invitationToken);
+      return true;
     } catch {
       setErrorMessage('Something went wrong checking that code. Please try again.');
+      return false;
     } finally {
       setIsChecking(false);
+    }
+  };
+
+  const handleContinue = async () => {
+    if (await validateAndStoreCode()) {
+      navigateToSignUp();
+    }
+  };
+
+  const handleSignIn = async () => {
+    if (await validateAndStoreCode()) {
+      navigateToSignIn();
     }
   };
 
@@ -88,19 +110,19 @@ export function RedeemInviteCode() {
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
             >
-              <Text style={styles.title}>Enter Invite Code</Text>
+              <Text style={styles.title}>Enter Invitation Code</Text>
               <Text style={styles.description}>
-                Paste the invite code from your email. You'll create your account
-                next, then join automatically.
+                Enter the invitation code from your email. You'll create your
+                account next, then join automatically.
               </Text>
 
               <Input
                 testID="redeem-invite-code-input"
-                label="Invite Code"
-                placeholder="Enter code"
+                label="Invitation Code"
+                placeholder="NM-7X4K92"
                 value={code}
-                onChangeText={setCode}
-                autoCapitalize="none"
+                onChangeText={(value) => setCode(value.toUpperCase())}
+                autoCapitalize="characters"
                 autoCorrect={false}
                 state={errorMessage ? 'error' : 'default'}
               />
@@ -113,7 +135,11 @@ export function RedeemInviteCode() {
 
               <View style={styles.signInContainer}>
                 <Text style={styles.signInText}>Already have an account? </Text>
-                <TouchableOpacity testID="redeem-invite-code-sign-in-link" onPress={navigateToSignIn}>
+                <TouchableOpacity
+                  testID="redeem-invite-code-sign-in-link"
+                  onPress={handleSignIn}
+                  disabled={isChecking}
+                >
                   <Text style={styles.signInLink}>Sign In</Text>
                 </TouchableOpacity>
               </View>

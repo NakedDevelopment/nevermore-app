@@ -68,20 +68,21 @@ export function Welcome() {
             style={styles.createAccountButton}
           />
 
+          <Button
+            testID="welcome-redeem-invite-code-button"
+            title="Enter Invitation Code"
+            onPress={handleRedeemInviteCode}
+            variant="outline"
+            size="medium"
+            style={styles.redeemInviteCodeButton}
+          />
+
           <View style={[styles.signInContainer, styles.signInRow]}>
             <Text style={styles.signInText}>Already have an account? </Text>
             <Text testID="welcome-sign-in-link" style={styles.signInLink} onPress={handleSignIn}>
               Sign In
             </Text>
           </View>
-
-          <Text
-            testID="welcome-redeem-invite-code-link"
-            style={styles.redeemInviteLink}
-            onPress={handleRedeemInviteCode}
-          >
-            Have an invite code?
-          </Text>
         </View>
       </ImageBackground>
     </View>
@@ -123,6 +124,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   createAccountButton: {
+    marginBottom: 16,
+    width: '100%',
+  },
+  redeemInviteCodeButton: {
     marginBottom: 24,
     width: '100%',
   },
@@ -141,13 +146,5 @@ const styles = StyleSheet.create({
   signInLink: {
     fontFamily: 'Roboto_500Medium',
     color: '#8A2BE2',
-  },
-  redeemInviteLink: {
-    fontFamily: 'Roboto_400Regular',
-    color: '#FFFFFF',
-    fontSize: 14,
-    textAlign: 'center',
-    marginTop: 16,
-    textDecorationLine: 'underline',
   },
 });

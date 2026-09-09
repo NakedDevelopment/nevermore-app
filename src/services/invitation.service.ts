@@ -19,6 +19,31 @@ async function getCurrentUser(): Promise<Models.User<Models.Preferences> | null>
   }
 }
 
+// Characters chosen to avoid visual ambiguity when a recipient types the code
+// by hand (no 0/O, 1/I/L).
+const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+const CODE_SEGMENT_LENGTH = 6;
+const CODE_VALIDITY_DAYS = 30;
+
+function generateInvitationCode(): string {
+  let segment = '';
+  for (let i = 0; i < CODE_SEGMENT_LENGTH; i++) {
+    segment += CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)];
+  }
+  return `NM-${segment}`;
+}
+
+export type InvitationValidationReason =
+  | 'not_found'
+  | 'expired'
+  | 'accepted'
+  | 'revoked'
+  | 'invalid';
+
+export type InvitationValidationResult =
+  | { ok: true; invitation: Invitation }
+  | { ok: false; reason: InvitationValidationReason };
+
 export interface Invitation {
   $id?: string;
   inviterId: string;
@@ -31,6 +56,7 @@ export interface Invitation {
   acceptedAt?: string;
   revokedAt?: string;
   upgradedAt?: string;
+  expiresAt?: string;
   $createdAt?: string;
   $updatedAt?: string;
 }
@@ -59,7 +85,7 @@ class InvitationService {
     return status === 'accepted';
   }
 
-  private async sendInvitationEmail(email: string, deepLink: string): Promise<void> {
+  private async sendInvitationEmail(email: string, inviteCode: string): Promise<void> {
     if (!appwriteConfig.invitationFunctionId) {
       throw new Error(
         'APPWRITE_INVITATION_FUNCTION_ID is not configured. Please check your .env file.'
@@ -68,7 +94,7 @@ class InvitationService {
 
     const execution = await functions.createExecution({
       functionId: appwriteConfig.invitationFunctionId,
-      body: JSON.stringify({ email, deepLink }),
+      body: JSON.stringify({ email, inviteCode }),
       async: false,
     });
 
@@ -97,6 +123,90 @@ class InvitationService {
     }
   }
 
+  // 32^6 possible codes makes a collision astronomically unlikely, but a
+  // paying subscriber's invite shouldn't ever silently fail over one, so we
+  // check.
+  private async generateUniqueInvitationCode(): Promise<string> {
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const code = generateInvitationCode();
+      const existing = await this.getInvitationByToken(code);
+      if (!existing) {
+        return code;
+      }
+    }
+    throw new Error('Failed to generate a unique invitation code. Please try again.');
+  }
+
+  // `expiresAt` requires a matching attribute on the invitations collection.
+  // Older environments that haven't added it yet still get a working
+  // (non-expiring) invitation instead of a hard failure.
+  private async createInvitationRow(data: {
+    rowId: string;
+    inviterId: string;
+    inviterProfileId: string;
+    email: string;
+    status: Invitation['status'];
+    invitationToken: string;
+    deepLink: string;
+    expiresAt: string;
+  }): Promise<Models.Document> {
+    const { rowId, expiresAt, ...rest } = data;
+    try {
+      return await tablesDB.createRow({
+        databaseId: APPWRITE_DATABASE_ID,
+        tableId: APPWRITE_INVITATIONS_COLLECTION_ID,
+        rowId,
+        data: { ...rest, expiresAt } as Record<string, unknown>,
+      }) as unknown as Models.Document;
+    } catch {
+      return await tablesDB.createRow({
+        databaseId: APPWRITE_DATABASE_ID,
+        tableId: APPWRITE_INVITATIONS_COLLECTION_ID,
+        rowId,
+        data: rest as Record<string, unknown>,
+      }) as unknown as Models.Document;
+    }
+  }
+
+  private isExpired(invitation: Invitation): boolean {
+    if (!invitation.expiresAt) {
+      return false;
+    }
+    return new Date(invitation.expiresAt).getTime() < Date.now();
+  }
+
+  // Central place to classify a code the user typed in, so every entry point
+  // (RedeemInviteCode, auto-redeem after sign-up/sign-in) shows the same
+  // reason instead of a generic failure.
+  async validateInvitationCode(rawCode: string): Promise<InvitationValidationResult> {
+    const code = rawCode.trim().toUpperCase();
+    if (!code) {
+      return { ok: false, reason: 'invalid' };
+    }
+
+    const invitation = await this.getInvitationByToken(code);
+    if (!invitation) {
+      return { ok: false, reason: 'not_found' };
+    }
+
+    if (invitation.status === 'revoked') {
+      return { ok: false, reason: 'revoked' };
+    }
+
+    if (invitation.status === 'accepted' || invitation.status === 'upgraded') {
+      return { ok: false, reason: 'accepted' };
+    }
+
+    if (invitation.status === 'expired' || this.isExpired(invitation)) {
+      if (invitation.status !== 'expired') {
+        await this.expireInvitation(invitation.$id!);
+      }
+      return { ok: false, reason: 'expired' };
+    }
+
+    return { ok: true, invitation };
+  }
+
   async createInvitation({
     email,
     inviterProfileId,
@@ -115,26 +225,23 @@ class InvitationService {
         throw new Error('You can only have up to 2 active invites. Please wait for one to be accepted or remove an existing invite.');
       }
 
-      const invitationToken = ID.unique();
-
+      const invitationToken = await this.generateUniqueInvitationCode();
       const deepLink = buildInviteLink(invitationToken);
-      
-      const invitation = await tablesDB.createRow({
-        databaseId: APPWRITE_DATABASE_ID,
-        tableId: APPWRITE_INVITATIONS_COLLECTION_ID,
+      const expiresAt = new Date(Date.now() + CODE_VALIDITY_DAYS * 24 * 60 * 60 * 1000).toISOString();
+
+      const invitation = await this.createInvitationRow({
         rowId: ID.unique(),
-        data: {
-          inviterId: currentUser.$id,
-          inviterProfileId: inviterProfileId || '',
-          email,
-          status: 'pending',
-          invitationToken,
-          deepLink,
-        },
+        inviterId: currentUser.$id,
+        inviterProfileId: inviterProfileId || '',
+        email,
+        status: 'pending',
+        invitationToken,
+        deepLink,
+        expiresAt,
       });
 
       try {
-        await this.sendInvitationEmail(email, deepLink);
+        await this.sendInvitationEmail(email, invitationToken);
       } catch (sendError: any) {
         try {
           await tablesDB.deleteRow({
@@ -247,25 +354,30 @@ class InvitationService {
         throw new Error('Only pending invitations can be resent.');
       }
 
-      const invitationToken = ID.unique();
+      const invitationToken = await this.generateUniqueInvitationCode();
       const deepLink = buildInviteLink(invitationToken);
+      const expiresAt = new Date(Date.now() + CODE_VALIDITY_DAYS * 24 * 60 * 60 * 1000).toISOString();
 
       try {
-        await this.sendInvitationEmail(invitation.email, deepLink);
+        await this.sendInvitationEmail(invitation.email, invitationToken);
       } catch (sendError: any) {
         throw new Error(`Failed to resend invitation: ${sendError?.message || 'Unknown error'}`);
       }
 
-      const updatedInvitation = await tablesDB.updateRow({
-        databaseId: APPWRITE_DATABASE_ID,
-        tableId: APPWRITE_INVITATIONS_COLLECTION_ID,
-        rowId: invitation.$id,
-        data: {
+      const updatedInvitation = await this.updateInvitationWithFallback(
+        invitation.$id,
+        {
           status: 'pending',
           invitationToken,
           deepLink,
+          expiresAt,
         },
-      });
+        {
+          status: 'pending',
+          invitationToken,
+          deepLink,
+        }
+      );
 
       return updatedInvitation as unknown as Invitation;
     } catch (error: any) {
@@ -340,16 +452,12 @@ class InvitationService {
     try {
       this.validateConfig();
 
-      const invitation = await this.getInvitationByToken(token);
-      if (!invitation || !invitation.$id) {
-        throw new Error('Invitation not found');
+      const result = await this.validateInvitationCode(token);
+      if (!result.ok) {
+        throw new Error(`Invitation is ${result.reason.replace('_', ' ')}`);
       }
 
-      if (invitation.status !== 'pending') {
-        throw new Error(`Invitation has already been ${invitation.status}`);
-      }
-
-      return await this.acceptInvitationRecord(invitation, inviteeId);
+      return await this.acceptInvitationRecord(result.invitation, inviteeId);
     } catch (error: any) {
       showAppwriteError(error, { skipUnauthorized: true });
       throw new Error(error.message || 'Failed to accept invitation');

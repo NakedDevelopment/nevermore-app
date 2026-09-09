@@ -1,20 +1,16 @@
 <!--
   Brevo transactional template: Nevermore invitation email (template #1).
 
-  This file was stale — it documented the old Appwrite native Magic URL
-  template format ({{user}}/{{redirect}}/{{project}}), which the app stopped
-  using once invitations moved to Brevo via functions/send-invitation-email.
-  Live in Brevo as template #1 ("New template", Active). This file is the
-  source of truth going forward - edit here, then paste into Brevo.
+  This file is a byte-identical pull of Brevo's live htmlContent (via
+  GET /v3/smtp/templates/1) — Brevo is the source of truth. Do not hand-edit;
+  edit in Brevo and re-pull, or push edits here back to Brevo via the API.
 
   Required params, supplied by functions/send-invitation-email:
-    {{ params.FIRSTNAME }}    recipient's name, or "there"
-    {{ params.REDIRECT }}     full link including ?token=...&userId=...&secret=...
-    {{ params.INVITE_CODE }}  plain-text invitation token, shown as a fallback
-                              for recipients who install the app fresh (no app
-                              installed yet, so the deep link can't survive the
-                              store round-trip) and redeem it manually via the
-                              app's "Enter Invite Code" screen instead.
+    {{ params.FIRSTNAME }}   recipient's name, or "there"
+    {{ params.INVITE_CODE }} the invitation code, e.g. "NM-7X4K92"
+
+  App Store / Google Play links are hardcoded directly in this HTML, not
+  templated as params.
 
   Subject:  You matter to someone's recovery.
   Sender:   louis@nevermoreapp.com (nevermoreapp.com is authenticated in Brevo)
@@ -155,15 +151,25 @@
 
     <!-- CTA -->
     <tr>
-      <td class="cta-td" align="center" style="padding:32px 48px 16px 48px;">
-        <p style="margin:0 0 4px 0;font-family:'Lato',Arial,sans-serif;font-size:15px;color:#a89cc0;line-height:1.6;text-align:center;">If you'd like to accept this invitation,</p>
-        <p style="margin:0 0 22px 0;font-family:'Lato',Arial,sans-serif;font-size:15px;color:#a89cc0;line-height:1.6;text-align:center;">you can securely join their support circle below.</p>
-        <table class="cta-inner" role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;">
+      <td class="cta-td" align="center" style="padding:32px 48px 8px 48px;">
+        <p style="margin:0 0 4px 0;font-family:'Lato',Arial,sans-serif;font-size:15px;color:#a89cc0;line-height:1.6;text-align:center;">If you'd like to accept this invitation, download Nevermore below</p>
+        <p style="margin:0 0 22px 0;font-family:'Lato',Arial,sans-serif;font-size:15px;color:#a89cc0;line-height:1.6;text-align:center;">and use your invitation code after opening the app.</p>
+        <table class="cta-inner" role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto 12px auto;">
           <tr>
             <td align="center" style="border-radius:10px;background:linear-gradient(135deg,#7c3aed,#6d28d9);">
-              <a href="{{ params.REDIRECT }}" target="_blank"
-                 style="display:inline-block;padding:16px 64px;font-family:'Lato',Arial,sans-serif;font-size:17px;font-weight:700;color:#ffffff;text-decoration:none;letter-spacing:0.5px;border-radius:10px;">
-                Accept Invitation
+              <a href="https://apps.apple.com/app/id6754863979" target="_blank"
+                 style="display:inline-block;padding:15px 44px;font-family:'Lato',Arial,sans-serif;font-size:16px;font-weight:700;color:#ffffff;text-decoration:none;letter-spacing:0.4px;border-radius:10px;">
+                Download on the App Store
+              </a>
+            </td>
+          </tr>
+        </table>
+        <table class="cta-inner" role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto 12px auto;">
+          <tr>
+            <td align="center" style="border-radius:10px;background:linear-gradient(135deg,#7c3aed,#6d28d9);">
+              <a href="https://play.google.com/store/apps/details?id=com.nevermoreapp" target="_blank"
+                 style="display:inline-block;padding:15px 44px;font-family:'Lato',Arial,sans-serif;font-size:16px;font-weight:700;color:#ffffff;text-decoration:none;letter-spacing:0.4px;border-radius:10px;">
+                Get it on Google Play
               </a>
             </td>
           </tr>
@@ -171,19 +177,19 @@
       </td>
     </tr>
 
-    <!-- FALLBACK CODE -->
+    <!-- INVITATION CODE -->
     <tr>
-      <td class="cta-td" align="center" style="padding:4px 48px 28px 48px;">
+      <td class="cta-td" align="center" style="padding:12px 48px 28px 48px;">
         <div style="height:1px;background:linear-gradient(90deg,transparent,#3d2060,transparent);margin-bottom:24px;"></div>
-        <p style="margin:0 0 4px 0;font-family:'Lato',Arial,sans-serif;font-size:14px;color:#a89cc0;line-height:1.6;text-align:center;">Don't have Nevermore installed yet?</p>
-        <p style="margin:0 0 16px 0;font-family:'Lato',Arial,sans-serif;font-size:14px;color:#a89cc0;line-height:1.6;text-align:center;">Install the app from the App Store or Google Play, open it, tap <strong style="color:#c4b5d8;">"Have an invite code?"</strong>, and enter this code:</p>
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;">
+        <p style="margin:0 0 14px 0;font-family:'Lato',Arial,sans-serif;font-size:14px;color:#8b5cf6;font-weight:700;letter-spacing:1px;text-transform:uppercase;text-align:center;">Your Invitation Code</p>
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto 18px auto;">
           <tr>
             <td align="center" style="border-radius:8px;background:rgba(139,92,246,0.12);border:1px solid #6b3fa0;padding:14px 28px;">
-              <span style="font-family:'Courier New',Courier,monospace;font-size:18px;letter-spacing:2px;color:#e8e0f5;">{{ params.INVITE_CODE }}</span>
+              <span style="font-family:'Courier New',Courier,monospace;font-size:22px;font-weight:700;letter-spacing:3px;color:#e8e0f5;">{{ params.INVITE_CODE }}</span>
             </td>
           </tr>
         </table>
+        <p style="margin:0;font-family:'Lato',Arial,sans-serif;font-size:14px;color:#a89cc0;line-height:1.7;text-align:center;">After installing Nevermore, open the app and select <strong style="color:#c4b5d8;">&ldquo;Enter Invitation Code.&rdquo;</strong></p>
       </td>
     </tr>
 

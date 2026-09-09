@@ -371,16 +371,7 @@ const linking = {
       [ScreenNames.SIGN_IN]: 'signin',
       [ScreenNames.SIGN_UP]: 'signup',
       [ScreenNames.FORGOT_PASSWORD]: 'forgot-password',
-      [ScreenNames.INVITE]: {
-        path: 'invite',
-        parse: {
-          token: (token: string) => token,
-          userId: (userId: string) => userId,
-          secret: (secret: string) => secret,
-          expire: (expire: string) => expire,
-          project: (project: string) => project,
-        },
-      },
+      [ScreenNames.INVITE]: 'invite',
       [ScreenNames.HOME_TABS]: {
         path: 'home',
         screens: {
