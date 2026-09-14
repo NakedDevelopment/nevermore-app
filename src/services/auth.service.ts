@@ -5,7 +5,6 @@ import type { User } from "../types";
 import { showAppwriteError } from "./notifications";
 import { isUnauthorizedError } from "./errorHandler";
 import { userProfileService } from "./userProfile.service";
-import { invitationService } from "./invitation.service";
 import { MAGIC_URL_LINK, PASSWORD_RESET_LINK } from "../constants/deepLinks";
 
 export interface SignUpParams {
@@ -70,14 +69,17 @@ export const signIn = async (
     }
 
     const session = await account.createEmailPasswordSession(email, password);
-    
-    // Update invitation status to accepted if user has a pending invitation
-    try {
-      await invitationService.acceptInvitationByEmail(email);
-    } catch (invitationError) {
-      // Silently fail - invitation acceptance shouldn't block sign-in
-    }
-    
+
+    // This used to also call invitationService.acceptInvitationByEmail(email)
+    // here unconditionally — a holdover from the old magic-link flow, where
+    // matching the signed-in email was the only acceptance signal available.
+    // It raced ahead of the code-based redemption in authStore's
+    // redeemPendingCodeIfAny (which runs after signIn/signUp resolve),
+    // silently marking the invitation accepted by email match alone —
+    // without setting inviteeId — before the real redemption logic ever
+    // got a chance to run, so it always found the invitation already
+    // non-pending and threw (swallowed silently, no confirmation shown).
+    // Removed: the code-based path is now the only acceptance mechanism.
     return session;
   } catch (error: unknown) {
     const isInvalidCredentials = isUnauthorizedError(error);
@@ -273,17 +275,12 @@ export const createMagicURLSession = async (
         // Profile creation/check failed, but session is created - don't block login
         console.error('User profile check/create error:', profileError);
       }
-      
-      // Update invitation status to accepted if user has a pending invitation
-      try {
-        if (user.email) {
-          await invitationService.acceptInvitationByEmail(user.email);
-        }
-      } catch (invitationError) {
-        // Silently fail - invitation acceptance shouldn't block sign-in
-      }
+
+      // This used to also call invitationService.acceptInvitationByEmail()
+      // here — see the comment in signIn() above for why that raced against
+      // and broke the code-based redemption path. Removed for the same reason.
     }
-    
+
     return session;
   } catch (error: unknown) {
     const isInvalidCredentials = isUnauthorizedError(error);

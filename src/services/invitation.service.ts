@@ -318,30 +318,6 @@ class InvitationService {
     }
   }
 
-  async getPendingInvitationByEmail(email: string): Promise<Invitation | null> {
-    try {
-      this.validateConfig();
-
-      const response = await tablesDB.listRows({
-        databaseId: APPWRITE_DATABASE_ID,
-        tableId: APPWRITE_INVITATIONS_COLLECTION_ID,
-        queries: [
-          Query.equal('email', email),
-          Query.equal('status', 'pending'),
-        ],
-      });
-
-      if (response.rows.length > 0) {
-        const invitation = response.rows[0] as unknown as Invitation;
-        return invitation;
-      }
-
-      return null;
-    } catch (error: any) {
-      return null;
-    }
-  }
-
   async resendInvitation(invitation: Invitation): Promise<Invitation> {
     try {
       this.validateConfig();
@@ -383,33 +359,6 @@ class InvitationService {
     } catch (error: any) {
       showAppwriteError(error, { skipUnauthorized: true });
       throw new Error(error.message || 'Failed to resend invitation');
-    }
-  }
-
-  async acceptInvitationByEmail(email: string): Promise<Invitation | null> {
-    try {
-      this.validateConfig();
-
-      const invitation = await this.getPendingInvitationByEmail(email);
-      if (!invitation || !invitation.$id) {
-        return null;
-      }
-
-      const updatedInvitation = await this.updateInvitationWithFallback(
-        invitation.$id,
-        {
-          status: 'accepted',
-          acceptedAt: new Date().toISOString(),
-        },
-        {
-          status: 'accepted',
-        }
-      );
-
-      return updatedInvitation as unknown as Invitation;
-    } catch (error: any) {
-      // Silently fail - invitation acceptance shouldn't block sign-in
-      return null;
     }
   }
 
