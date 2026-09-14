@@ -25,7 +25,7 @@ export type CodeClassification =
   | { ok: true; kind: 'access_code'; code: string }
   | { ok: false; kind: 'invitation'; reason: InvitationValidationReason }
   | { ok: false; kind: 'access_code'; reason: AccessCodeValidationReason }
-  | { ok: false; kind: null; reason: 'not_found' | 'invalid' };
+  | { ok: false; kind: null; reason: 'not_found' | 'invalid' | 'rate_limited' };
 
 class CodeRedemptionService {
   async classifyCode(rawCode: string): Promise<CodeClassification> {
@@ -51,14 +51,18 @@ class CodeRedemptionService {
       kind?: CodeKind | null;
       code?: string;
       reason?: string;
-    } = {};
+    } | null = null;
     try {
-      result = execution.responseBody ? JSON.parse(execution.responseBody) : {};
+      result = execution.responseBody ? JSON.parse(execution.responseBody) : null;
     } catch {
-      // Fall through to the generic failure below.
+      // Malformed/non-JSON response — fall through to the generic failure below.
     }
 
-    if (execution.responseStatusCode >= 400 || result.success === undefined) {
+    // The function always returns a structured `{ success, kind, reason }`
+    // body, even on 4xx/5xx (e.g. 429 for rate limiting, 500 for a lookup
+    // error) — status code alone isn't a signal to discard the body, only a
+    // response that didn't parse at all is.
+    if (!result || result.success === undefined) {
       return { ok: false, kind: null, reason: 'not_found' };
     }
 
@@ -74,7 +78,11 @@ class CodeRedemptionService {
     if (result.kind === 'access_code') {
       return { ok: false, kind: 'access_code', reason: (result.reason as AccessCodeValidationReason) || 'not_found' };
     }
-    return { ok: false, kind: null, reason: 'not_found' };
+    return {
+      ok: false,
+      kind: null,
+      reason: result.reason === 'rate_limited' ? 'rate_limited' : 'not_found',
+    };
   }
 
   // Called after the recipient has authenticated (see authStore's pending

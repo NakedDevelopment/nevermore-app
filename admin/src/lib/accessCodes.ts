@@ -218,7 +218,12 @@ export async function setAccessCodeStatus(codeId: string, status: 'active' | 'in
 
 export async function updateAccessCode(
   codeId: string,
-  patch: Partial<Pick<AccessCodeConfig, 'expiresAt' | 'maxRedemptions' | 'notes' | 'accessDurationDays'>>
+  patch: Partial<Pick<AccessCodeConfig, 'notes' | 'accessDurationDays'>> & {
+    // null clears the field (e.g. "no expiration" / "unlimited") — omitting
+    // a key entirely leaves that column untouched.
+    expiresAt?: string | null;
+    maxRedemptions?: number | null;
+  }
 ): Promise<void> {
   try {
     await tablesDB.updateRow({
@@ -227,6 +232,77 @@ export async function updateAccessCode(
       rowId: codeId,
       data: patch,
     });
+  } catch (error: unknown) {
+    showAppwriteError(error);
+    throw error;
+  }
+}
+
+/**
+ * Deactivates a code and issues a fresh one with the same configuration
+ * (campaign, org, duration, redemption limit, complimentary/discount,
+ * notes) and the same prefix — for a lost or compromised code. The old
+ * code's redemption history stays on its own row; the new code starts at
+ * zero redemptions.
+ */
+export async function createReplacementCode(oldCode: AccessCode): Promise<AccessCode> {
+  try {
+    const prefix = oldCode.code.split('-')[0] || 'NM';
+    const newCodeString = await generateUniqueCode(prefix, 6);
+
+    const replacement = await createAccessCodeRow(newCodeString, {
+      campaignName: oldCode.campaignName,
+      organizationName: oldCode.organizationName,
+      accessDurationDays: oldCode.accessDurationDays,
+      maxRedemptions: oldCode.maxRedemptions,
+      expiresAt: oldCode.expiresAt,
+      isComplimentary: oldCode.isComplimentary,
+      discountPercent: oldCode.discountPercent,
+      notes: oldCode.notes ? `${oldCode.notes} (replaces ${oldCode.code})` : `Replaces ${oldCode.code}`,
+      status: 'active',
+      createdBy: oldCode.createdBy,
+    });
+
+    await tablesDB.updateRow({
+      databaseId: DATABASE_ID,
+      tableId: ACCESS_CODES_COLLECTION_ID,
+      rowId: oldCode.$id,
+      data: {
+        status: 'inactive',
+        notes: oldCode.notes
+          ? `${oldCode.notes} (replaced by ${newCodeString})`
+          : `Replaced by ${newCodeString}`,
+      },
+    });
+
+    return replacement;
+  } catch (error: unknown) {
+    showAppwriteError(error);
+    throw error;
+  }
+}
+
+/**
+ * Deactivates every currently-active code in a campaign in one action —
+ * for ending a pilot or terminating a partnership. Returns how many codes
+ * were actually deactivated (codes already inactive are left alone).
+ */
+export async function terminateCampaign(campaignCodes: AccessCode[]): Promise<number> {
+  const activeCodes = campaignCodes.filter((c) => c.status === 'active');
+  if (activeCodes.length === 0) {
+    return 0;
+  }
+
+  try {
+    for (const code of activeCodes) {
+      await tablesDB.updateRow({
+        databaseId: DATABASE_ID,
+        tableId: ACCESS_CODES_COLLECTION_ID,
+        rowId: code.$id,
+        data: { status: 'inactive' },
+      });
+    }
+    return activeCodes.length;
   } catch (error: unknown) {
     showAppwriteError(error);
     throw error;

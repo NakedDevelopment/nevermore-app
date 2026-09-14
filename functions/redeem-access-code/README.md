@@ -39,6 +39,6 @@ Success:
 
 Failure (`success: false`) includes a `reason`: `not_found`, `expired`, `inactive`, `redemption_limit`, `already_redeemed`, `unauthenticated`, `invalid_request`, or `server_error`.
 
-## Note on the redemption-count race
+## Note on concurrency
 
-`access_codes.redemptionCount` is incremented with a plain read-then-write, not an atomic operation — there is no atomic increment in the Appwrite TablesDB API. Two people redeeming the same multi-use code at the exact same moment could in rare cases push the count slightly past `maxRedemptions`. The `(userId, codeId)` unique index on `access_code_redemptions` is what actually prevents the same user from redeeming twice, and that guarantee is solid. The redemption-count race is a minor over-issuance risk on high-concurrency multi-use codes, not a security hole.
+`access_codes.redemptionCount` is claimed via `TablesDB.incrementRowColumn` with a `max` cap, which is atomic server-side (it rejects the increment with a `column_limit_exceeded` error rather than silently overshooting) — this closes the race two different people redeeming the same multi-use code at the same instant used to have, where both could pass a stale `redemptionCount` read and push the count past `maxRedemptions`. The slot is claimed *before* the redemption row is written; if the row write then fails (most likely the `(userId, codeId)` unique index rejecting a same-user duplicate), the claimed slot is released with a compensating decrement so the counter doesn't count a redemption that never actually landed.

@@ -46,6 +46,7 @@ const ACCESS_CODE_ERROR_MESSAGES: Record<string, string> = {
 const GENERIC_ERROR_MESSAGES: Record<string, string> = {
   not_found: 'The code entered could not be found. Please check the code and try again.',
   invalid: 'Enter the invitation code from your email.',
+  rate_limited: 'Too many attempts. Please wait a few minutes and try again.',
 };
 
 export function RedeemInviteCode() {

@@ -92,7 +92,10 @@ module.exports = async ({ req, res, error }) => {
   if (accessCode.expiresAt && new Date(accessCode.expiresAt).getTime() < now) {
     return res.json({ success: false, reason: 'expired' }, 409);
   }
-  if (accessCode.redemptionCount >= accessCode.maxRedemptions) {
+  // maxRedemptions: null means unlimited — without this guard,
+  // `redemptionCount >= null` coerces null to 0 and blocks every unlimited
+  // code on its very first redemption (0 >= 0).
+  if (accessCode.maxRedemptions != null && accessCode.redemptionCount >= accessCode.maxRedemptions) {
     return res.json({ success: false, reason: 'redemption_limit' }, 409);
   }
 
@@ -111,6 +114,45 @@ module.exports = async ({ req, res, error }) => {
   } catch (err) {
     error('Failed to check existing redemptions: ' + err.message);
     return res.json({ success: false, reason: 'server_error', message: 'Failed to check redemption status' }, 500);
+  }
+
+  // Atomically claim a redemption slot before writing the row, using `max`
+  // as the authoritative limit check on the server side — this is what
+  // actually closes the race the pre-check above can't: two different
+  // people redeeming the same multi-use code at the same instant could
+  // previously both pass a stale `redemptionCount` read and push the count
+  // past maxRedemptions. incrementRowColumn's `max` rejects the increment
+  // atomically instead, throwing column_limit_exceeded.
+  if (accessCode.maxRedemptions != null) {
+    try {
+      await tablesDB.incrementRowColumn({
+        databaseId,
+        tableId: accessCodesCollectionId,
+        rowId: accessCode.$id,
+        column: 'redemptionCount',
+        value: 1,
+        max: accessCode.maxRedemptions,
+      });
+    } catch (err) {
+      if (err.type === 'column_limit_exceeded') {
+        return res.json({ success: false, reason: 'redemption_limit' }, 409);
+      }
+      error('Failed to claim a redemption slot: ' + err.message);
+      return res.json({ success: false, reason: 'server_error', message: 'Failed to claim a redemption slot' }, 500);
+    }
+  } else {
+    // Unlimited code — still track redemptionCount for reporting, just with no cap to enforce.
+    try {
+      await tablesDB.incrementRowColumn({
+        databaseId,
+        tableId: accessCodesCollectionId,
+        rowId: accessCode.$id,
+        column: 'redemptionCount',
+        value: 1,
+      });
+    } catch (err) {
+      error('Failed to increment (unlimited) redemption count: ' + err.message);
+    }
   }
 
   const redeemedAt = new Date();
@@ -137,25 +179,23 @@ module.exports = async ({ req, res, error }) => {
     });
   } catch (err) {
     // Most likely the unique (userId, codeId) index rejecting a concurrent
-    // duplicate redemption that slipped past the check above.
+    // duplicate redemption from the same user that slipped past the check
+    // above. The slot claimed above was real, though — release it so the
+    // counter doesn't count a redemption that never actually landed.
+    try {
+      await tablesDB.decrementRowColumn({
+        databaseId,
+        tableId: accessCodesCollectionId,
+        rowId: accessCode.$id,
+        column: 'redemptionCount',
+        value: 1,
+      });
+    } catch {
+      // Best-effort — leaves the counter off by one in the rare case this
+      // also fails, which is far less bad than double-claiming a slot.
+    }
     error('Failed to create redemption row: ' + err.message);
     return res.json({ success: false, reason: 'already_redeemed' }, 409);
-  }
-
-  try {
-    await tablesDB.updateRow({
-      databaseId,
-      tableId: accessCodesCollectionId,
-      rowId: accessCode.$id,
-      data: { redemptionCount: accessCode.redemptionCount + 1 },
-    });
-  } catch (err) {
-    // The redemption row (created above) is the source of truth for "did
-    // this user get access" — don't fail the whole redemption over the
-    // counter update. A concurrent redeemer of the same multi-use code could
-    // in rare cases push the count slightly past maxRedemptions; acceptable
-    // at pilot/promo scale without a transactional increment.
-    error('Failed to increment access code redemption count: ' + err.message);
   }
 
   return res.json({ success: true, accessExpiresAt: accessExpiresAt || null });

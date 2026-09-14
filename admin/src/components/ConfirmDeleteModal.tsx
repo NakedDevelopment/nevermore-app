@@ -9,6 +9,14 @@ interface ConfirmDeleteModalProps {
   title?: string;
   itemName?: string;
   isLoading?: boolean;
+  /** Verb shown in the body text for non-delete confirmations, e.g. "replace", "terminate". */
+  actionVerb?: string;
+  /** Button label while idle, e.g. "Replace" — defaults to the capitalized actionVerb. */
+  confirmLabel?: string;
+  /** Button label while isLoading, e.g. "Replacing..." — defaults to "Deleting...". */
+  confirmingLabel?: string;
+  /** Overrides the default "cannot be undone / files removed" copy entirely. */
+  description?: string;
 }
 
 export const ConfirmDeleteModal: React.FC<ConfirmDeleteModalProps> = ({
@@ -18,6 +26,10 @@ export const ConfirmDeleteModal: React.FC<ConfirmDeleteModalProps> = ({
   title = 'Delete Content',
   itemName,
   isLoading = false,
+  actionVerb = 'delete',
+  confirmLabel,
+  confirmingLabel = 'Deleting...',
+  description,
 }) => {
   // Handle ESC key
   useEffect(() => {
@@ -84,7 +96,7 @@ export const ConfirmDeleteModal: React.FC<ConfirmDeleteModalProps> = ({
             className="text-white text-[16px] leading-[24px] mb-2"
             style={{ fontFamily: 'Roboto, sans-serif' }}
           >
-            Are you sure you want to delete
+            Are you sure you want to {actionVerb}
             {itemName && (
               <span className="text-[#965cdf] font-medium"> "{itemName}"</span>
             )}
@@ -94,7 +106,7 @@ export const ConfirmDeleteModal: React.FC<ConfirmDeleteModalProps> = ({
             className="text-[#8f8f8f] text-[14px] leading-[20px]"
             style={{ fontFamily: 'Roboto, sans-serif' }}
           >
-            This action cannot be undone. All associated files will be permanently removed.
+            {description || 'This action cannot be undone. All associated files will be permanently removed.'}
           </p>
         </div>
 
@@ -105,7 +117,7 @@ export const ConfirmDeleteModal: React.FC<ConfirmDeleteModalProps> = ({
             className="flex-1 h-[56px] rounded-[12px] bg-[#965CDF] text-white hover:bg-[#8549c9] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-colors duration-200 font-medium text-[16px] font-roboto"
             disabled={isLoading}
           >
-            {isLoading ? 'Deleting...' : 'Delete'}
+            {isLoading ? confirmingLabel : confirmLabel || actionVerb.charAt(0).toUpperCase() + actionVerb.slice(1)}
           </button>
           <button
             onClick={onClose}

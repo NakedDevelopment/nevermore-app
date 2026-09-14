@@ -2,16 +2,23 @@ import { useEffect, useMemo, useState } from 'react';
 import { DataTable } from '../components/DataTable';
 import type { Column } from '../components/DataTable';
 import { Button } from '../components/Button';
+import { ConfirmDeleteModal } from '../components/ConfirmDeleteModal';
+import CloseIcon from '../assets/icons/close';
 import { showSuccess, showWarning } from '../lib/notifications';
 import {
   createAccessCodeBatch,
   createNamedAccessCode,
   listAccessCodes,
   setAccessCodeStatus,
+  updateAccessCode,
+  createReplacementCode,
+  terminateCampaign,
+  listRedemptionsForCode,
   summarizeByCampaign,
   accessCodesToCsv,
   type AccessCode,
   type AccessCodeConfig,
+  type AccessCodeRedemption,
 } from '../lib/accessCodes';
 
 type GenerationMode = 'batch' | 'named';
@@ -72,6 +79,23 @@ export const AccessCodes = () => {
   const [form, setForm] = useState<FormState>(DEFAULT_FORM);
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [justCreated, setJustCreated] = useState<AccessCode[] | null>(null);
+
+  const [editingCode, setEditingCode] = useState<AccessCode | null>(null);
+  const [editExpiresAt, setEditExpiresAt] = useState('');
+  const [editUnlimitedRedemptions, setEditUnlimitedRedemptions] = useState(false);
+  const [editMaxRedemptions, setEditMaxRedemptions] = useState(1);
+  const [editNotes, setEditNotes] = useState('');
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+
+  const [replacingCode, setReplacingCode] = useState<AccessCode | null>(null);
+  const [isReplacing, setIsReplacing] = useState(false);
+
+  const [terminatingCampaign, setTerminatingCampaign] = useState<string | null>(null);
+  const [isTerminating, setIsTerminating] = useState(false);
+
+  const [historyCode, setHistoryCode] = useState<AccessCode | null>(null);
+  const [historyRedemptions, setHistoryRedemptions] = useState<AccessCodeRedemption[] | null>(null);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
 
   const loadCodes = async () => {
     setIsLoading(true);
@@ -159,6 +183,83 @@ export const AccessCodes = () => {
     }
   };
 
+  const handleOpenEdit = (code: AccessCode) => {
+    setEditingCode(code);
+    setEditExpiresAt(code.expiresAt ? code.expiresAt.slice(0, 10) : '');
+    setEditUnlimitedRedemptions(code.maxRedemptions === null);
+    setEditMaxRedemptions(code.maxRedemptions ?? 1);
+    setEditNotes(code.notes || '');
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingCode) return;
+    setIsSavingEdit(true);
+    try {
+      await updateAccessCode(editingCode.$id, {
+        expiresAt: editExpiresAt ? new Date(editExpiresAt).toISOString() : null,
+        maxRedemptions: editUnlimitedRedemptions ? null : Number(editMaxRedemptions) || 1,
+        notes: editNotes.trim() || undefined,
+      });
+      showSuccess(`${editingCode.code} updated.`);
+      setEditingCode(null);
+      await loadCodes();
+    } catch {
+      // updateAccessCode already shows a notification.
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  const handleReplace = async () => {
+    if (!replacingCode) return;
+    setIsReplacing(true);
+    try {
+      const replacement = await createReplacementCode(replacingCode);
+      showSuccess(`${replacingCode.code} deactivated. New code: ${replacement.code}`);
+      setReplacingCode(null);
+      await loadCodes();
+    } catch {
+      // createReplacementCode already shows a notification.
+    } finally {
+      setIsReplacing(false);
+    }
+  };
+
+  const handleTerminateCampaign = async () => {
+    if (!terminatingCampaign) return;
+    setIsTerminating(true);
+    try {
+      const campaignCodes = codes.filter(
+        (c) => (c.campaignName?.trim() || 'Uncategorized') === terminatingCampaign
+      );
+      const count = await terminateCampaign(campaignCodes);
+      showSuccess(
+        count > 0
+          ? `Deactivated ${count} code${count === 1 ? '' : 's'} in "${terminatingCampaign}".`
+          : `No active codes to deactivate in "${terminatingCampaign}".`
+      );
+      setTerminatingCampaign(null);
+      await loadCodes();
+    } catch {
+      // terminateCampaign already shows a notification.
+    } finally {
+      setIsTerminating(false);
+    }
+  };
+
+  const handleOpenHistory = async (code: AccessCode) => {
+    setHistoryCode(code);
+    setHistoryRedemptions(null);
+    setIsLoadingHistory(true);
+    try {
+      setHistoryRedemptions(await listRedemptionsForCode(code.$id));
+    } catch {
+      setHistoryRedemptions([]);
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  };
+
   const handleCopy = async (value: string) => {
     try {
       await navigator.clipboard.writeText(value);
@@ -221,6 +322,24 @@ export const AccessCodes = () => {
           >
             {row.status === 'active' ? 'Deactivate' : 'Reactivate'}
           </button>
+          <button
+            onClick={() => handleOpenEdit(row)}
+            className="rounded-[8px] border border-[rgba(255,255,255,0.2)] px-3 py-1.5 text-[12px] text-white hover:bg-[rgba(255,255,255,0.08)]"
+          >
+            Edit
+          </button>
+          <button
+            onClick={() => setReplacingCode(row)}
+            className="rounded-[8px] border border-[rgba(255,255,255,0.2)] px-3 py-1.5 text-[12px] text-white hover:bg-[rgba(255,255,255,0.08)]"
+          >
+            Replace
+          </button>
+          <button
+            onClick={() => handleOpenHistory(row)}
+            className="rounded-[8px] border border-[rgba(255,255,255,0.2)] px-3 py-1.5 text-[12px] text-white hover:bg-[rgba(255,255,255,0.08)]"
+          >
+            History
+          </button>
         </div>
       ),
     },
@@ -243,7 +362,15 @@ export const AccessCodes = () => {
               key={summary.campaignName}
               className="rounded-[16px] bg-[rgba(255,255,255,0.07)] p-4 backdrop-blur-[10px]"
             >
-              <p className="mb-2 truncate text-[14px] font-medium text-white">{summary.campaignName}</p>
+              <div className="mb-2 flex items-start justify-between gap-2">
+                <p className="truncate text-[14px] font-medium text-white">{summary.campaignName}</p>
+                <button
+                  onClick={() => setTerminatingCampaign(summary.campaignName)}
+                  className="shrink-0 rounded-[8px] border border-[rgba(239,68,68,0.4)] px-2.5 py-1 text-[11px] text-red-400 hover:bg-[rgba(239,68,68,0.1)]"
+                >
+                  Terminate
+                </button>
+              </div>
               <p className="text-[12px] text-[#8f8f8f]">Codes issued: {summary.codesIssued}</p>
               <p className="text-[12px] text-[#8f8f8f]">
                 Redeemed: {summary.codesRedeemed} / {summary.totalRedemptionCapacity === null ? '∞' : summary.totalRedemptionCapacity}
@@ -488,6 +615,155 @@ export const AccessCodes = () => {
           <DataTable columns={columns} data={visibleCodes as (AccessCode & Record<string, unknown>)[]} />
         )}
       </div>
+
+      {/* Edit modal: extend/clear expiration, adjust redemption limit, notes */}
+      {editingCode && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={() => !isSavingEdit && setEditingCode(null)}>
+          <div className="absolute inset-0 bg-black/50" />
+          <div
+            className="relative w-[420px] max-w-[92vw] rounded-[16px] bg-[rgba(255,255,255,0.1)] p-6 backdrop-blur-[10px]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-5 flex items-center justify-between">
+              <h2 className="text-[20px] text-white" style={{ fontFamily: 'Cinzel, serif', fontWeight: 400 }}>
+                Edit {editingCode.code}
+              </h2>
+              <button onClick={() => setEditingCode(null)} disabled={isSavingEdit} aria-label="Close">
+                <CloseIcon width={20} height={20} color="#fff" />
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-1.5">
+                <label className={labelClass}>Code expiration date (blank = never)</label>
+                <input
+                  type="date"
+                  className={inputClass}
+                  value={editExpiresAt}
+                  onChange={(e) => setEditExpiresAt(e.target.value)}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className={labelClass}>Maximum redemptions</label>
+                <input
+                  type="number"
+                  min={editingCode.redemptionCount || 1}
+                  className={inputClass}
+                  value={editMaxRedemptions}
+                  disabled={editUnlimitedRedemptions}
+                  onChange={(e) => setEditMaxRedemptions(Number(e.target.value))}
+                />
+                <label className="flex items-center gap-2 pt-1">
+                  <input
+                    type="checkbox"
+                    checked={editUnlimitedRedemptions}
+                    onChange={(e) => setEditUnlimitedRedemptions(e.target.checked)}
+                    className="h-4 w-4"
+                  />
+                  <span className="text-[13px] text-white">Unlimited redemptions</span>
+                </label>
+                <p className="text-[11px] text-[#6b6b6b]">Already redeemed {editingCode.redemptionCount} time{editingCode.redemptionCount === 1 ? '' : 's'}.</p>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className={labelClass}>Notes (internal)</label>
+                <input className={inputClass} value={editNotes} onChange={(e) => setEditNotes(e.target.value)} />
+              </div>
+            </div>
+
+            <div className="mt-6 flex gap-3">
+              <button
+                onClick={handleSaveEdit}
+                disabled={isSavingEdit}
+                className="h-[48px] flex-1 rounded-[12px] bg-[#965CDF] text-[14px] text-white hover:bg-[#8549c9] disabled:opacity-50"
+              >
+                {isSavingEdit ? 'Saving...' : 'Save changes'}
+              </button>
+              <button
+                onClick={() => setEditingCode(null)}
+                disabled={isSavingEdit}
+                className="h-[48px] flex-1 rounded-[12px] border border-[rgba(255,255,255,0.25)] bg-[#131313] text-[14px] text-white hover:bg-[#1a1a1a] disabled:opacity-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Redemption history */}
+      {historyCode && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={() => setHistoryCode(null)}>
+          <div className="absolute inset-0 bg-black/50" />
+          <div
+            className="relative w-[480px] max-w-[92vw] max-h-[80vh] overflow-y-auto rounded-[16px] bg-[rgba(255,255,255,0.1)] p-6 backdrop-blur-[10px]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-5 flex items-center justify-between">
+              <h2 className="text-[20px] text-white" style={{ fontFamily: 'Cinzel, serif', fontWeight: 400 }}>
+                Redemptions — {historyCode.code}
+              </h2>
+              <button onClick={() => setHistoryCode(null)} aria-label="Close">
+                <CloseIcon width={20} height={20} color="#fff" />
+              </button>
+            </div>
+
+            {isLoadingHistory ? (
+              <p className="py-6 text-center text-[13px] text-[#8f8f8f]">Loading...</p>
+            ) : !historyRedemptions || historyRedemptions.length === 0 ? (
+              <p className="py-6 text-center text-[13px] text-[#8f8f8f]">No redemptions yet.</p>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {historyRedemptions.map((r) => (
+                  <div key={r.$id} className="rounded-[10px] bg-[rgba(255,255,255,0.05)] p-3">
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono text-[12px] text-[#c4b5d8]">{r.userId}</span>
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-[11px] ${
+                          r.status === 'active' ? 'bg-[rgba(34,197,94,0.15)] text-green-400' : 'bg-[rgba(255,255,255,0.08)] text-[#8f8f8f]'
+                        }`}
+                      >
+                        {r.status}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-[12px] text-[#8f8f8f]">
+                      Redeemed {new Date(r.redeemedAt).toLocaleString()}
+                    </p>
+                    <p className="text-[12px] text-[#8f8f8f]">
+                      Access {r.accessExpiresAt ? `until ${new Date(r.accessExpiresAt).toLocaleDateString()}` : 'never expires'}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      <ConfirmDeleteModal
+        isOpen={!!replacingCode}
+        onClose={() => !isReplacing && setReplacingCode(null)}
+        onConfirm={handleReplace}
+        title="Replace Code"
+        itemName={replacingCode?.code}
+        isLoading={isReplacing}
+        actionVerb="replace"
+        confirmLabel="Replace"
+        confirmingLabel="Replacing..."
+        description="The current code will be deactivated (its redemption history stays intact) and a new active code with the same configuration will be issued."
+      />
+
+      <ConfirmDeleteModal
+        isOpen={!!terminatingCampaign}
+        onClose={() => !isTerminating && setTerminatingCampaign(null)}
+        onConfirm={handleTerminateCampaign}
+        title="Terminate Campaign"
+        itemName={terminatingCampaign || undefined}
+        isLoading={isTerminating}
+        actionVerb="terminate"
+        confirmLabel="Terminate"
+        confirmingLabel="Terminating..."
+        description="Every currently active code in this campaign will be deactivated. Codes already redeemed keep the access they granted — this only stops further redemptions."
+      />
     </div>
   );
 };
