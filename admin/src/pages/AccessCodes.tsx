@@ -78,6 +78,7 @@ export const AccessCodes = () => {
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [form, setForm] = useState<FormState>(DEFAULT_FORM);
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const [searchQuery, setSearchQuery] = useState('');
   const [justCreated, setJustCreated] = useState<AccessCode[] | null>(null);
 
   const [editingCode, setEditingCode] = useState<AccessCode | null>(null);
@@ -115,10 +116,18 @@ export const AccessCodes = () => {
 
   const campaignSummaries = useMemo(() => summarizeByCampaign(codes), [codes]);
 
-  const visibleCodes = useMemo(
-    () => (statusFilter === 'all' ? codes : codes.filter((c) => c.status === statusFilter)),
-    [codes, statusFilter]
-  );
+  const visibleCodes = useMemo(() => {
+    const byStatus = statusFilter === 'all' ? codes : codes.filter((c) => c.status === statusFilter);
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return byStatus;
+    return byStatus.filter(
+      (c) =>
+        c.code.toLowerCase().includes(query) ||
+        c.campaignName?.toLowerCase().includes(query) ||
+        c.organizationName?.toLowerCase().includes(query) ||
+        c.notes?.toLowerCase().includes(query)
+    );
+  }, [codes, statusFilter, searchQuery]);
 
   const buildConfig = (): AccessCodeConfig => ({
     campaignName: form.campaignName.trim() || undefined,
@@ -588,7 +597,14 @@ export const AccessCodes = () => {
           <h2 className="text-[16px] text-white" style={{ fontFamily: 'Cinzel, serif', fontWeight: 550 }}>
             All Codes ({visibleCodes.length})
           </h2>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search code, campaign, org, notes..."
+              className="h-[40px] w-[240px] rounded-[10px] border border-[rgba(255,255,255,0.25)] bg-[#131313] px-3 text-[13px] text-white placeholder:text-[#6b6b6b] focus:outline-none focus:border-[#965cdf]"
+            />
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value as 'all' | 'active' | 'inactive')}
