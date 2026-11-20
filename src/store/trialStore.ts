@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import { userProfileService } from '../services/userProfile.service';
 
+/** @deprecated Local 72h trial is no longer used for access; the store manages the 3-day intro trial. */
 const TRIAL_DURATION_MS = 72 * 60 * 60 * 1000;
 
 interface TrialState {

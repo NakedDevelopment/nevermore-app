@@ -19,12 +19,14 @@ import { PasswordInput } from '../../components/PasswordInput';
 import { useSignIn } from '../../hooks/useSignIn';
 import { useAppNavigation } from '../../hooks/useAppNavigation';
 import { useSharedAccessStore } from '../../store/sharedAccessStore';
-import { useTrialStore } from '../../store/trialStore';
+import { useSubscriptionStore } from '../../store/subscriptionStore';
+import { useOnboardingStore } from '../../store/onboardingStore';
+import { shouldShowPostOnboardingPaywallGate } from '../../utils/subscriptionAccess';
 
 export function SignIn() {
   const { goBack, navigateToHome, navigateToTrialExpired, navigateToForgotPassword, navigateToSignUp } = useAppNavigation();
   const { isLoading, handleSignIn: signInUser } = useSignIn();
-  const isTrialExpired = useTrialStore((s) => s.isTrialExpired);
+  const isOnboardingComplete = useOnboardingStore((s) => s.isOnboardingComplete);
   
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -42,7 +44,15 @@ export function SignIn() {
       },
       {
         onSuccess: () => {
-          if (!useSharedAccessStore.getState().isSharedAccessActive && isTrialExpired()) {
+          const isSubscribed = useSubscriptionStore.getState().isSubscribed;
+          const isSharedAccessActive = useSharedAccessStore.getState().isSharedAccessActive;
+          if (
+            shouldShowPostOnboardingPaywallGate({
+              isOnboardingComplete,
+              isSubscribed,
+              isSharedAccessActive,
+            })
+          ) {
             navigateToTrialExpired();
             return;
           }

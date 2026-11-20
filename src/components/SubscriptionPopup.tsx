@@ -227,7 +227,7 @@ export function SubscriptionPopup({
         </View>
 
         <Text style={styles.description}>
-          You have 3 free days. After that you must subscribe to continue.
+          Start your 3-day free trial with a subscription. Cancel anytime before the trial ends to avoid being charged.
         </Text>
 
         <View style={styles.plansContainer}>

@@ -43,7 +43,7 @@ import BookmarkActiveIcon from '../assets/icons/bookmark-active';
 import { CustomDrawerContent } from '../components/DrawerMenu';
 import Home from './screens/Home';
 import { useSubscriptionStore } from '../store/subscriptionStore';
-import { useTrialStore } from '../store/trialStore';
+import { shouldShowPostOnboardingPaywallGate } from '../utils/subscriptionAccess';
 import { useSharedAccessStore } from '../store/sharedAccessStore';
 
 const Tab = createBottomTabNavigator();
@@ -455,8 +455,6 @@ export function Navigation(props?: any) {
   const isSubscribed = useSubscriptionStore((s) => s.isSubscribed);
   const isSharedAccessActive = useSharedAccessStore((s) => s.isSharedAccessActive);
   const refreshSharedAccess = useSharedAccessStore((s) => s.refreshSharedAccess);
-  const trialStartDate = useTrialStore((s) => s.trialStartDate);
-  const isTrialExpired = useTrialStore((s) => s.isTrialExpired);
   const navigationRef = useNavigationContainerRef();
   const didRestoreOnboardingStackRef = useRef(false);
   const pendingDeepLinkRouteRef = useRef<{ name: ScreenNames; params?: Record<string, string> } | null>(null);
@@ -498,7 +496,13 @@ export function Navigation(props?: any) {
       return ScreenNames.WELCOME;
     }
 
-    if (isOnboardingComplete && !isSubscribed && !isSharedAccessActive && isTrialExpired()) {
+    if (
+      shouldShowPostOnboardingPaywallGate({
+        isOnboardingComplete,
+        isSubscribed,
+        isSharedAccessActive,
+      })
+    ) {
       return ScreenNames.TRIAL_EXPIRED;
     }
 
@@ -558,15 +562,23 @@ export function Navigation(props?: any) {
     return () => clearInterval(intervalId);
   }, [isAuthenticated, isOnboardingComplete, refreshSharedAccess]);
 
-  // If the trial expires while user is in the app, hard-block with TrialExpired.
+  // If subscription access lapses while user is in the app, hard-block with TrialExpired.
   useEffect(() => {
-    const maybeBlockExpiredTrial = () => {
+    const maybeBlockWithoutSubscription = () => {
       if (!isAuthenticated) return;
       if (!isOnboardingComplete) return;
       if (isSubscribed) return;
       if (isSharedAccessActive) return;
       if (!navigationRef.isReady()) return;
-      if (!isTrialExpired()) return;
+      if (
+        !shouldShowPostOnboardingPaywallGate({
+          isOnboardingComplete,
+          isSubscribed,
+          isSharedAccessActive,
+        })
+      ) {
+        return;
+      }
 
       const currentRouteName = navigationRef.getCurrentRoute()?.name;
       if (currentRouteName === ScreenNames.TRIAL_EXPIRED) return;
@@ -577,10 +589,10 @@ export function Navigation(props?: any) {
       } as any);
     };
 
-    maybeBlockExpiredTrial();
-    const intervalId = setInterval(maybeBlockExpiredTrial, 60 * 1000);
+    maybeBlockWithoutSubscription();
+    const intervalId = setInterval(maybeBlockWithoutSubscription, 60 * 1000);
     return () => clearInterval(intervalId);
-  }, [isAuthenticated, isOnboardingComplete, isSubscribed, isSharedAccessActive, isTrialExpired, trialStartDate, navigationRef]);
+  }, [isAuthenticated, isOnboardingComplete, isSubscribed, isSharedAccessActive, navigationRef]);
 
   // The block above only ever navigates TO TrialExpired, never away from it.
   // A subscriber who lands there from a slow/stale subscription check (or
