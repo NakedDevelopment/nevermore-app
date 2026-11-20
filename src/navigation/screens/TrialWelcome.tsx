@@ -237,7 +237,7 @@ export function TrialWelcome() {
     );
   };
 
-  if (!hasCheckedSharedAccess || isSharedAccessActive) {
+  if (!hasCheckedSharedAccess || isSharedAccessActive || isAdminAccessActive) {
     return (
       <View style={styles.container}>
         <StatusBar barStyle="light-content" backgroundColor="#000000" />

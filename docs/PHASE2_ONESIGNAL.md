@@ -4,8 +4,8 @@
 
 1. User completes trial purchase on `TrialWelcome`.
 2. `NotificationOptIn` shows the raven loop and explains the 40-message sequence.
-3. **Turn on notifications** calls OneSignal `requestPermission` (native OS prompt).
-4. On grant, the app schedules 40 date-triggered local notifications via `expo-notifications` at the **same local hour/minute** as opt-in (day 1 = next occurrence of that time).
+3. **Turn on notifications** requests push permission (OneSignal when `ONESIGNAL_APP_ID` is set, otherwise `expo-notifications` with a console warning).
+4. On grant, the app schedules 40 date-triggered local notifications via `expo-notifications` at **6:30 PM device-local time** (day 1 = today at 18:30 if opt-in is before 18:30, else tomorrow at 18:30).
 5. Messages fire in strict order 1→40, then scheduling stops.
 
 Louis Murray’s copy is in `src/constants/dailyPushMessages.ts` (sourced from the **Nevermore Optimization Phase 2** client deck, Nov 2026). The deck is not committed to git.
@@ -28,6 +28,6 @@ Create one OneSignal app with both **iOS** (`com.nevermore.app`) and **Android**
 
 ## Operations
 
-- OneSignal: device registration, external user id = Appwrite user id, tags `daily_push_active` / `daily_push_next_day`.
+- OneSignal (optional): device registration, external user id = Appwrite user id, tags `daily_push_active` / `daily_push_next_day`. Email is not uploaded to OneSignal from the client.
 - Delivery: client-scheduled local notifications (no server cron required for Phase 2).
 - On sign-out: scheduled notifications are cancelled and push state resets.
