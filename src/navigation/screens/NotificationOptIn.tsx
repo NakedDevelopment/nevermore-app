@@ -9,7 +9,7 @@ import { ScreenNames } from '../../constants/ScreenNames';
 import { useOnboardingStore } from '../../store/onboardingStore';
 import { usePushNotificationStore } from '../../store/pushNotificationStore';
 import { requestPushPermission, setDailyPushTags } from '../../services/onesignal.service';
-import { scheduleRemainingDailyPushes } from '../../services/dailyPushScheduler.service';
+import { syncDailyPushScheduleFromState } from '../../services/dailyPushScheduler.service';
 import { DAILY_PUSH_DELIVERY_TIME } from '../../utils/dailyPushSchedule';
 
 export function NotificationOptIn() {
@@ -33,12 +33,12 @@ export function NotificationOptIn() {
     setIsLoading(true);
     setError(null);
     try {
-      const now = new Date();
       const granted = await requestPushPermission();
+      const optedInAt = new Date();
 
       usePushNotificationStore.getState().setOptInScreenCompleted(true);
       usePushNotificationStore.getState().recordOptIn(
-        now.toISOString(),
+        optedInAt.toISOString(),
         DAILY_PUSH_DELIVERY_TIME.hour,
         DAILY_PUSH_DELIVERY_TIME.minute
       );
@@ -46,7 +46,7 @@ export function NotificationOptIn() {
 
       if (granted) {
         setDailyPushTags(1, true);
-        await scheduleRemainingDailyPushes();
+        await syncDailyPushScheduleFromState();
       } else {
         setDailyPushTags(1, false);
       }

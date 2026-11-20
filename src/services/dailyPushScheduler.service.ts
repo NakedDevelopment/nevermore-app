@@ -41,12 +41,16 @@ export async function ensureNotificationChannels(): Promise<void> {
   });
 }
 
-export async function cancelScheduledDailyPushes(): Promise<void> {
+async function cancelScheduledDailyPushesUnlocked(): Promise<void> {
   const { scheduledNotificationIds } = usePushNotificationStore.getState();
   await Promise.all(
     scheduledNotificationIds.map((id) => Notifications.cancelScheduledNotificationAsync(id).catch(() => {}))
   );
   usePushNotificationStore.getState().setScheduledNotificationIds([]);
+}
+
+export async function cancelScheduledDailyPushes(): Promise<void> {
+  return withSchedulingLock(cancelScheduledDailyPushesUnlocked);
 }
 
 async function scheduleRemainingDailyPushesLocked(): Promise<void> {
@@ -61,7 +65,7 @@ async function scheduleRemainingDailyPushesLocked(): Promise<void> {
   const days = getRemainingMessageDays(state.nextMessageDay);
   if (days.length === 0) return;
 
-  await cancelScheduledDailyPushes();
+  await cancelScheduledDailyPushesUnlocked();
   await ensureNotificationChannels();
 
   const ids: string[] = [];
@@ -70,6 +74,9 @@ async function scheduleRemainingDailyPushesLocked(): Promise<void> {
     if (!message) continue;
 
     const triggerDate = getTriggerDateForMessageDay(optedInAt, day, delivery);
+    if (triggerDate.getTime() <= Date.now()) {
+      continue;
+    }
     const id = await Notifications.scheduleNotificationAsync({
       content: {
         title: message.title,
@@ -87,6 +94,12 @@ async function scheduleRemainingDailyPushesLocked(): Promise<void> {
     ids.push(id);
   }
 
+  const latest = usePushNotificationStore.getState();
+  if (!latest.notificationsEnabled || !latest.optedInAt) {
+    await cancelScheduledDailyPushesUnlocked();
+    return;
+  }
+
   usePushNotificationStore.getState().setScheduledNotificationIds(ids);
 }
 
@@ -95,7 +108,7 @@ export async function scheduleRemainingDailyPushes(): Promise<void> {
 }
 
 export async function completeDailyPushSequenceAfterDay40(): Promise<void> {
-  await cancelScheduledDailyPushes();
+  await cancelScheduledDailyPushesUnlocked();
   usePushNotificationStore.getState().setNextMessageDay(41);
 }
 
