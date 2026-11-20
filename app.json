@@ -29,7 +29,8 @@
       "appleTeamId": "C5DF3CP9LJ",
       "infoPlist": {
         "UIBackgroundModes": [
-          "audio"
+          "audio",
+          "remote-notification"
         ],
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -119,7 +120,21 @@
         }
       ],
       "expo-audio",
-      "react-native-iap"
+      "react-native-iap",
+      [
+        "onesignal-expo-plugin",
+        {
+          "mode": "production",
+          "smallIcons": ["./src/assets/notification_icon_android.png"]
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./src/assets/notification_icon_android.png",
+          "color": "#8B5CF6"
+        }
+      ]
     ],
     "extra": {
       "eas": {

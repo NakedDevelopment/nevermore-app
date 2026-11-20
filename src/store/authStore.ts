@@ -8,6 +8,9 @@ import { useTrialStore, syncTrialFromUserProfile } from './trialStore';
 import { useSharedAccessStore } from './sharedAccessStore';
 import { useAdminAccessStore } from './adminAccessStore';
 import { useSubscriptionStore } from './subscriptionStore';
+import { usePushNotificationStore } from './pushNotificationStore';
+import { logoutOneSignal } from '../services/onesignal.service';
+import { cancelScheduledDailyPushes } from '../services/dailyPushScheduler.service';
 import { ScreenNames } from '../constants/ScreenNames';
 import { usePendingInviteStore } from './pendingInvite.store';
 import { codeRedemptionService } from '../services/codeRedemption.service';
@@ -127,6 +130,8 @@ export const useAuthStore = create<AuthState>((set) => ({
       await import('../contexts/AudioPlayerProvider').then(({ stopAllAudioPlayback }) => stopAllAudioPlayback());
       await authService.signOut();
       await import('../services/iap.service').then(({ iapService }) => iapService.logOut());
+      await cancelScheduledDailyPushes();
+      await logoutOneSignal();
 
       // Clear onboarding state on sign out
       useOnboardingStore.getState().resetOnboarding();
@@ -134,6 +139,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       useSharedAccessStore.getState().clearSharedAccess();
       useAdminAccessStore.getState().clearAdminAccess();
       useSubscriptionStore.getState().resetSubscriptionState();
+      usePushNotificationStore.getState().resetPushNotificationState();
 
       set({ user: null, isAuthenticated: false, isLoading: false });
     } catch (error: any) {
