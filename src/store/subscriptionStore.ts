@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { RestorePurchaseStatus, SubscriptionPlan, SubscriptionProducts } from '../services/iap.service';
+import { getIAPProductIds } from '../services/iap.service';
 
 async function syncCurrentUserSubscriptionStatus(isSubscribed: boolean): Promise<void> {
   try {
@@ -29,6 +30,7 @@ interface SubscriptionState {
   checkSubscription: () => Promise<void>;
   loadProducts: () => Promise<void>;
   purchaseSubscription: (productId: string) => Promise<boolean>;
+  purchaseSubscriptionForPlan: (plan: SubscriptionPlan) => Promise<boolean>;
   restorePurchases: () => Promise<boolean>;
   presentPaywall: () => Promise<boolean>;
   presentCustomerCenter: () => Promise<void>;
@@ -112,7 +114,7 @@ export const useSubscriptionStore = create<SubscriptionState>()(
         try {
           const success = await iapService.purchaseSubscription(productId);
           if (success) {
-            const { monthly, yearly } = await import('../services/iap.service').then((m) => m.getIAPProductIds());
+            const { monthly, yearly } = getIAPProductIds();
             const activePlan = productId === yearly ? 'yearly' : productId === monthly ? 'monthly' : null;
             set({ isSubscribed: true, activePlan, isLoading: false, error: null });
             syncCurrentUserSubscriptionStatus(true);
@@ -125,6 +127,12 @@ export const useSubscriptionStore = create<SubscriptionState>()(
           set({ isLoading: false, error: message });
           return false;
         }
+      },
+
+      purchaseSubscriptionForPlan: async (plan: SubscriptionPlan): Promise<boolean> => {
+        const { products } = get();
+        const productId = products[plan]?.productId ?? getIAPProductIds()[plan];
+        return get().purchaseSubscription(productId);
       },
 
       restorePurchases: async (): Promise<boolean> => {

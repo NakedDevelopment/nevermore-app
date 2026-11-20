@@ -6,7 +6,9 @@
     "start": "expo start --dev-client",
     "web": "expo start --web",
     "android": "expo run:android",
-    "ios": "expo run:ios"
+    "ios": "expo run:ios",
+    "test": "node --import tsx --test src/**/*.test.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.app.json"
   },
   "dependencies": {
     "@expo-google-fonts/cinzel": "^0.4.2",
@@ -67,6 +69,7 @@
     "@babel/core": "^7.20.0",
     "@types/react": "~19.1.10",
     "react-native-dotenv": "^3.4.11",
+    "tsx": "^4.23.15",
     "typescript": "~5.9.2"
   },
   "private": true

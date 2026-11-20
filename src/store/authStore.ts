@@ -101,7 +101,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       if (!user) {
         throw new Error('No authenticated user after sign in');
       }
-      await syncTrialFromUserProfile(user.$id, { backfillTrialIfMissing: true });
+      await syncTrialFromUserProfile(user.$id);
       await redeemPendingCodeIfAny(user.$id);
       await useSharedAccessStore.getState().refreshSharedAccess();
       await useAdminAccessStore.getState().refreshAdminAccess();
@@ -178,7 +178,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     try {
       const user = await authService.getCurrentUser();
       if (user) {
-        await syncTrialFromUserProfile(user.$id, { backfillTrialIfMissing: true });
+        await syncTrialFromUserProfile(user.$id);
         await useSharedAccessStore.getState().refreshSharedAccess();
         await useAdminAccessStore.getState().refreshAdminAccess();
         await useBookmarkStore.getState().hydrateFromBackend();
@@ -239,7 +239,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       if (!user) {
         throw new Error('No authenticated user after magic URL session');
       }
-      await syncTrialFromUserProfile(user.$id, { backfillTrialIfMissing: true });
+      await syncTrialFromUserProfile(user.$id);
       await redeemPendingCodeIfAny(user.$id);
       await useSharedAccessStore.getState().refreshSharedAccess();
       await useAdminAccessStore.getState().refreshAdminAccess();

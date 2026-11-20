@@ -24,7 +24,8 @@ import { Button } from '../../components/Button';
 import { ScreenNames } from '../../constants/ScreenNames';
 import { useSharedAccessStore } from '../../store/sharedAccessStore';
 import { useSubscriptionStore } from '../../store/subscriptionStore';
-import { useTrialStore } from '../../store/trialStore';
+import { shouldShowPostOnboardingPaywallGate } from '../../utils/subscriptionAccess';
+import { useOnboardingStore } from '../../store/onboardingStore';
 
 type PlanType = 'monthly' | 'yearly';
 
@@ -44,7 +45,7 @@ export function Subscription() {
     activePlan,
     isLoading,
     error,
-    presentPaywall,
+    purchaseSubscriptionForPlan,
     presentCustomerCenter,
     restorePurchases,
     getRestorePurchaseStatus,
@@ -55,7 +56,7 @@ export function Subscription() {
   } = useSubscriptionStore();
   const isSharedAccessActive = useSharedAccessStore((s) => s.isSharedAccessActive);
   const markSharedAccessUpgraded = useSharedAccessStore((s) => s.markSharedAccessUpgraded);
-  const isTrialExpired = useTrialStore((s) => s.isTrialExpired);
+  const isOnboardingComplete = useOnboardingStore((s) => s.isOnboardingComplete);
   const isUsingSharedSubscription = isSharedAccessActive;
   const hasOwnSubscription = isSubscribed && !isSharedAccessActive;
   const [hasCheckedSubscription, setHasCheckedSubscription] = useState(false);
@@ -79,7 +80,11 @@ export function Subscription() {
 
     const fallbackRoute = isUsingSharedSubscription
       ? ScreenNames.HOME_TABS
-      : !hasOwnSubscription && isTrialExpired()
+      : shouldShowPostOnboardingPaywallGate({
+          isOnboardingComplete,
+          isSubscribed: hasOwnSubscription,
+          isSharedAccessActive: false,
+        })
       ? ScreenNames.TRIAL_EXPIRED
       : ScreenNames.TRIAL_WELCOME;
 
@@ -92,7 +97,7 @@ export function Subscription() {
   const handleSubscribe = async () => {
     setError(null);
     try {
-      const success = await presentPaywall();
+      const success = await purchaseSubscriptionForPlan(selectedPlan);
       if (success) {
         if (useSharedAccessStore.getState().isSharedAccessActive) {
           await markSharedAccessUpgraded();
@@ -185,7 +190,7 @@ export function Subscription() {
         >
           <Text style={styles.planTitle}>{title}</Text>
           {isYearly && (
-            <Text style={styles.planSubline}>★ Recommended for the full 40-day experience</Text>
+            <Text style={styles.planSubline}>★ Best value</Text>
           )}
           {!isYearly && (
             <Text style={styles.planSubline}>Flexible access</Text>
