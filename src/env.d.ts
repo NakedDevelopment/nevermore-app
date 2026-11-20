@@ -23,4 +23,5 @@ declare module '@env' {
   export const REVENUECAT_API_KEY: string;
   export const REVENUECAT_API_KEY_IOS: string;
   export const REVENUECAT_API_KEY_ANDROID: string;
+  export const ONESIGNAL_APP_ID: string;
 }

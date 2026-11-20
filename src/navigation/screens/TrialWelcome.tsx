@@ -22,6 +22,7 @@ import { useTrialStore } from '../../store/trialStore';
 import { useAuthStore } from '../../store/authStore';
 import { useSharedAccessStore } from '../../store/sharedAccessStore';
 import { useSubscriptionStore } from '../../store/subscriptionStore';
+import { usePushNotificationStore } from '../../store/pushNotificationStore';
 import { useAdminAccessStore } from '../../store/adminAccessStore';
 
 type PlanType = 'monthly' | 'yearly';
@@ -40,7 +41,7 @@ export function TrialWelcome() {
   const [hasCheckedSharedAccess, setHasCheckedSharedAccess] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<PlanType>('yearly');
 
-  const { completeOnboarding } = useOnboardingStore();
+  const { completeOnboarding, setCurrentStep } = useOnboardingStore();
   const { startTrial } = useTrialStore();
   const userId = useAuthStore((s) => s.user?.$id);
   const isSharedAccessActive = useSharedAccessStore((s) => s.isSharedAccessActive);
@@ -84,28 +85,37 @@ export function TrialWelcome() {
     checkSubscription();
   }, [loadProducts, checkSubscription]);
 
-  const finishOnboardingToHome = useCallback(() => {
-    completeOnboarding();
+  const proceedAfterTrial = useCallback(() => {
+    const optInDone = usePushNotificationStore.getState().optInScreenCompleted;
+    if (optInDone) {
+      completeOnboarding();
+      navigation.reset({
+        index: 0,
+        routes: [{ name: ScreenNames.HOME_TABS }],
+      });
+      return;
+    }
+    setCurrentStep(ScreenNames.NOTIFICATION_OPT_IN);
     navigation.reset({
       index: 0,
-      routes: [{ name: ScreenNames.HOME_TABS }],
+      routes: [{ name: ScreenNames.NOTIFICATION_OPT_IN }],
     });
-  }, [completeOnboarding, navigation]);
+  }, [completeOnboarding, navigation, setCurrentStep]);
 
   useEffect(() => {
     if (!isSharedAccessActive) return;
-    finishOnboardingToHome();
-  }, [finishOnboardingToHome, isSharedAccessActive]);
+    proceedAfterTrial();
+  }, [proceedAfterTrial, isSharedAccessActive]);
 
   useEffect(() => {
     if (!isAdminAccessActive) return;
-    finishOnboardingToHome();
-  }, [finishOnboardingToHome, isAdminAccessActive]);
+    proceedAfterTrial();
+  }, [isAdminAccessActive, proceedAfterTrial]);
 
   useEffect(() => {
     if (!hasCheckedSharedAccess || isSharedAccessActive || isAdminAccessActive || !isSubscribed) return;
-    finishOnboardingToHome();
-  }, [finishOnboardingToHome, hasCheckedSharedAccess, isSharedAccessActive, isAdminAccessActive, isSubscribed]);
+    proceedAfterTrial();
+  }, [proceedAfterTrial, hasCheckedSharedAccess, isSharedAccessActive, isAdminAccessActive, isSubscribed]);
 
   const yearlyPrice = products.yearly?.displayPrice || '—';
   const monthlyPrice = products.monthly?.displayPrice || '—';
@@ -121,7 +131,7 @@ export function TrialWelcome() {
       if (!success) return;
 
       await startTrial(userId);
-      finishOnboardingToHome();
+      proceedAfterTrial();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Unable to start trial. Please try again.';
       setError(message);
@@ -136,7 +146,7 @@ export function TrialWelcome() {
         if (userId) {
           await startTrial(userId);
         }
-        finishOnboardingToHome();
+        proceedAfterTrial();
         return;
       }
 

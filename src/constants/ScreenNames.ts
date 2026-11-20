@@ -13,6 +13,7 @@ export enum ScreenNames {
   INVITE = 'Invite',
   INVITE_SEND = 'InviteSend',
   TRIAL_WELCOME = 'TrialWelcome',
+  NOTIFICATION_OPT_IN = 'NotificationOptIn',
   TRIAL_EXPIRED = 'TrialExpired',
   SUBSCRIPTION = 'Subscription',
   HOME_TABS = 'HomeTabs',

@@ -25,6 +25,7 @@ import { Nickname } from './screens/Nickname';
 import { Invite } from './screens/Invite';
 import { InviteSend } from './screens/InviteSend';
 import { TrialWelcome } from './screens/TrialWelcome';
+import { NotificationOptIn } from './screens/NotificationOptIn';
 import { TrialExpired } from './screens/TrialExpired';
 import { Subscription } from './screens/Subscription';
 import TemptationDetails from './screens/TemptationDetails';
@@ -273,6 +274,14 @@ function RootStack({ initialRouteName }: { initialRouteName: string }) {
         }}
       />
       <Stack.Screen
+        name={ScreenNames.NOTIFICATION_OPT_IN}
+        component={NotificationOptIn}
+        options={{
+          title: 'Notification Opt-In',
+          gestureEnabled: false,
+        }}
+      />
+      <Stack.Screen
         name={ScreenNames.TRIAL_EXPIRED}
         component={TrialExpired}
         options={{
@@ -392,6 +401,7 @@ const ONBOARDING_STACK_ORDER: string[] = [
   ScreenNames.INVITE,
   ScreenNames.INVITE_SEND,
   ScreenNames.TRIAL_WELCOME,
+  ScreenNames.NOTIFICATION_OPT_IN,
 ];
 
 function getParamsFromUrl(url: string): Record<string, string> {

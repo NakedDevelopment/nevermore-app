@@ -14,6 +14,8 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { useAuthStore } from './store/authStore';
 import { useSubscriptionStore } from './store/subscriptionStore';
 import { iapService } from './services/iap.service';
+import { initOneSignal, identifyOneSignalUser } from './services/onesignal.service';
+import { syncDailyPushScheduleFromState } from './services/dailyPushScheduler.service';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -42,7 +44,7 @@ function AppContent() {
   const [showSplash, setShowSplash] = React.useState(true);
   const [assetsLoaded, setAssetsLoaded] = React.useState(false);
   const [authChecked, setAuthChecked] = React.useState(false);
-  const { checkAuth } = useAuthStore();
+  const { checkAuth, user, isAuthenticated } = useAuthStore();
 
   const theme = colorScheme === 'dark' ? {
     ...DarkTheme,
@@ -88,8 +90,15 @@ function AppContent() {
       iapService.init().then(() => {
         useSubscriptionStore.getState().checkSubscription();
       });
+      initOneSignal().then(() => syncDailyPushScheduleFromState());
     }
   }, [cinzelFontsLoaded, robotoFontsLoaded, assetsLoaded, checkAuth]);
+
+  React.useEffect(() => {
+    if (!isAuthenticated || !user?.$id) return;
+    identifyOneSignalUser(user.$id, user.email).catch(() => {});
+    syncDailyPushScheduleFromState().catch(() => {});
+  }, [isAuthenticated, user?.$id, user?.email]);
 
   React.useEffect(() => {
     if (cinzelFontsLoaded && robotoFontsLoaded && assetsLoaded && authChecked) {
