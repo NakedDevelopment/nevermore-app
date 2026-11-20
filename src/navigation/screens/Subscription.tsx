@@ -26,6 +26,7 @@ import { useSharedAccessStore } from '../../store/sharedAccessStore';
 import { useSubscriptionStore } from '../../store/subscriptionStore';
 import { shouldShowPostOnboardingPaywallGate } from '../../utils/subscriptionAccess';
 import { useOnboardingStore } from '../../store/onboardingStore';
+import { useAdminAccessStore } from '../../store/adminAccessStore';
 
 type PlanType = 'monthly' | 'yearly';
 
@@ -57,6 +58,7 @@ export function Subscription() {
   const isSharedAccessActive = useSharedAccessStore((s) => s.isSharedAccessActive);
   const markSharedAccessUpgraded = useSharedAccessStore((s) => s.markSharedAccessUpgraded);
   const isOnboardingComplete = useOnboardingStore((s) => s.isOnboardingComplete);
+  const isAdminAccessActive = useAdminAccessStore((s) => s.isAdminAccessActive);
   const isUsingSharedSubscription = isSharedAccessActive;
   const hasOwnSubscription = isSubscribed && !isSharedAccessActive;
   const [hasCheckedSubscription, setHasCheckedSubscription] = useState(false);
@@ -84,6 +86,7 @@ export function Subscription() {
           isOnboardingComplete,
           isSubscribed: hasOwnSubscription,
           isSharedAccessActive: false,
+          isAdminAccessActive,
         })
       ? ScreenNames.TRIAL_EXPIRED
       : ScreenNames.TRIAL_WELCOME;

@@ -55,6 +55,7 @@ describe('shouldShowPostOnboardingPaywallGate', () => {
         isOnboardingComplete: true,
         isSubscribed: false,
         isSharedAccessActive: false,
+        isAdminAccessActive: false,
       }),
       true
     );
@@ -66,6 +67,7 @@ describe('shouldShowPostOnboardingPaywallGate', () => {
         isOnboardingComplete: false,
         isSubscribed: false,
         isSharedAccessActive: false,
+        isAdminAccessActive: false,
       }),
       false
     );
@@ -74,6 +76,7 @@ describe('shouldShowPostOnboardingPaywallGate', () => {
         isOnboardingComplete: true,
         isSubscribed: true,
         isSharedAccessActive: false,
+        isAdminAccessActive: false,
       }),
       false
     );
@@ -82,6 +85,16 @@ describe('shouldShowPostOnboardingPaywallGate', () => {
         isOnboardingComplete: true,
         isSubscribed: false,
         isSharedAccessActive: true,
+        isAdminAccessActive: false,
+      }),
+      false
+    );
+    assert.equal(
+      shouldShowPostOnboardingPaywallGate({
+        isOnboardingComplete: true,
+        isSubscribed: false,
+        isSharedAccessActive: false,
+        isAdminAccessActive: true,
       }),
       false
     );

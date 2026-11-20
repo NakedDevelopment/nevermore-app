@@ -22,6 +22,7 @@ import { useTrialStore } from '../../store/trialStore';
 import { useAuthStore } from '../../store/authStore';
 import { useSharedAccessStore } from '../../store/sharedAccessStore';
 import { useSubscriptionStore } from '../../store/subscriptionStore';
+import { useAdminAccessStore } from '../../store/adminAccessStore';
 
 type PlanType = 'monthly' | 'yearly';
 
@@ -43,7 +44,9 @@ export function TrialWelcome() {
   const { startTrial } = useTrialStore();
   const userId = useAuthStore((s) => s.user?.$id);
   const isSharedAccessActive = useSharedAccessStore((s) => s.isSharedAccessActive);
+  const isAdminAccessActive = useAdminAccessStore((s) => s.isAdminAccessActive);
   const refreshSharedAccess = useSharedAccessStore((s) => s.refreshSharedAccess);
+  const refreshAdminAccess = useAdminAccessStore((s) => s.refreshAdminAccess);
   const {
     isSubscribed,
     isLoading,
@@ -64,7 +67,7 @@ export function TrialWelcome() {
     }
 
     let isMounted = true;
-    refreshSharedAccess()
+    Promise.all([refreshSharedAccess(), refreshAdminAccess()])
       .finally(() => {
         if (isMounted) {
           setHasCheckedSharedAccess(true);
@@ -74,7 +77,7 @@ export function TrialWelcome() {
     return () => {
       isMounted = false;
     };
-  }, [refreshSharedAccess, userId]);
+  }, [refreshAdminAccess, refreshSharedAccess, userId]);
 
   useEffect(() => {
     loadProducts();
@@ -95,9 +98,14 @@ export function TrialWelcome() {
   }, [finishOnboardingToHome, isSharedAccessActive]);
 
   useEffect(() => {
-    if (!hasCheckedSharedAccess || isSharedAccessActive || !isSubscribed) return;
+    if (!isAdminAccessActive) return;
     finishOnboardingToHome();
-  }, [finishOnboardingToHome, hasCheckedSharedAccess, isSharedAccessActive, isSubscribed]);
+  }, [finishOnboardingToHome, isAdminAccessActive]);
+
+  useEffect(() => {
+    if (!hasCheckedSharedAccess || isSharedAccessActive || isAdminAccessActive || !isSubscribed) return;
+    finishOnboardingToHome();
+  }, [finishOnboardingToHome, hasCheckedSharedAccess, isSharedAccessActive, isAdminAccessActive, isSubscribed]);
 
   const yearlyPrice = products.yearly?.displayPrice || '—';
   const monthlyPrice = products.monthly?.displayPrice || '—';

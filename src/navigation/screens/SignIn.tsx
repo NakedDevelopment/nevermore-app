@@ -21,12 +21,12 @@ import { useAppNavigation } from '../../hooks/useAppNavigation';
 import { useSharedAccessStore } from '../../store/sharedAccessStore';
 import { useSubscriptionStore } from '../../store/subscriptionStore';
 import { useOnboardingStore } from '../../store/onboardingStore';
+import { useAdminAccessStore } from '../../store/adminAccessStore';
 import { shouldShowPostOnboardingPaywallGate } from '../../utils/subscriptionAccess';
 
 export function SignIn() {
   const { goBack, navigateToHome, navigateToTrialExpired, navigateToForgotPassword, navigateToSignUp } = useAppNavigation();
   const { isLoading, handleSignIn: signInUser } = useSignIn();
-  const isOnboardingComplete = useOnboardingStore((s) => s.isOnboardingComplete);
   
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -46,11 +46,14 @@ export function SignIn() {
         onSuccess: () => {
           const isSubscribed = useSubscriptionStore.getState().isSubscribed;
           const isSharedAccessActive = useSharedAccessStore.getState().isSharedAccessActive;
+          const isAdminAccessActive = useAdminAccessStore.getState().isAdminAccessActive;
+          const isOnboardingComplete = useOnboardingStore.getState().isOnboardingComplete;
           if (
             shouldShowPostOnboardingPaywallGate({
               isOnboardingComplete,
               isSubscribed,
               isSharedAccessActive,
+              isAdminAccessActive,
             })
           ) {
             navigateToTrialExpired();

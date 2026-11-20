@@ -9,15 +9,17 @@ export function hasFullSubscriptionAccess(input: SubscriptionAccessInput): boole
   return input.isSubscribed || input.isSharedAccessActive || input.isAdminAccessActive;
 }
 
-/** After onboarding, users without paid/shared access should see the trial-ended / subscribe gate. */
+/** After onboarding, users without paid/shared/admin access should see the trial-ended / subscribe gate. */
 export function shouldShowPostOnboardingPaywallGate(input: {
   isOnboardingComplete: boolean;
   isSubscribed: boolean;
   isSharedAccessActive: boolean;
+  isAdminAccessActive: boolean;
 }): boolean {
   return (
     input.isOnboardingComplete &&
     !input.isSubscribed &&
-    !input.isSharedAccessActive
+    !input.isSharedAccessActive &&
+    !input.isAdminAccessActive
   );
 }

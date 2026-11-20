@@ -45,6 +45,7 @@ import Home from './screens/Home';
 import { useSubscriptionStore } from '../store/subscriptionStore';
 import { shouldShowPostOnboardingPaywallGate } from '../utils/subscriptionAccess';
 import { useSharedAccessStore } from '../store/sharedAccessStore';
+import { useAdminAccessStore } from '../store/adminAccessStore';
 
 const Tab = createBottomTabNavigator();
 const Drawer = createDrawerNavigator();
@@ -454,6 +455,7 @@ export function Navigation(props?: any) {
   const { isOnboardingComplete, currentOnboardingStep, completeOnboarding } = useOnboardingStore();
   const isSubscribed = useSubscriptionStore((s) => s.isSubscribed);
   const isSharedAccessActive = useSharedAccessStore((s) => s.isSharedAccessActive);
+  const isAdminAccessActive = useAdminAccessStore((s) => s.isAdminAccessActive);
   const refreshSharedAccess = useSharedAccessStore((s) => s.refreshSharedAccess);
   const navigationRef = useNavigationContainerRef();
   const didRestoreOnboardingStackRef = useRef(false);
@@ -501,6 +503,7 @@ export function Navigation(props?: any) {
         isOnboardingComplete,
         isSubscribed,
         isSharedAccessActive,
+        isAdminAccessActive,
       })
     ) {
       return ScreenNames.TRIAL_EXPIRED;
@@ -569,12 +572,14 @@ export function Navigation(props?: any) {
       if (!isOnboardingComplete) return;
       if (isSubscribed) return;
       if (isSharedAccessActive) return;
+      if (isAdminAccessActive) return;
       if (!navigationRef.isReady()) return;
       if (
         !shouldShowPostOnboardingPaywallGate({
           isOnboardingComplete,
           isSubscribed,
           isSharedAccessActive,
+          isAdminAccessActive,
         })
       ) {
         return;
@@ -592,7 +597,7 @@ export function Navigation(props?: any) {
     maybeBlockWithoutSubscription();
     const intervalId = setInterval(maybeBlockWithoutSubscription, 60 * 1000);
     return () => clearInterval(intervalId);
-  }, [isAuthenticated, isOnboardingComplete, isSubscribed, isSharedAccessActive, navigationRef]);
+  }, [isAuthenticated, isOnboardingComplete, isSubscribed, isSharedAccessActive, isAdminAccessActive, navigationRef]);
 
   // The block above only ever navigates TO TrialExpired, never away from it.
   // A subscriber who lands there from a slow/stale subscription check (or
@@ -601,7 +606,7 @@ export function Navigation(props?: any) {
   // Restore Purchase. Release the hard block automatically once isSubscribed
   // (or shared access) becomes true.
   useEffect(() => {
-    if (!isSubscribed && !isSharedAccessActive) return;
+    if (!isSubscribed && !isSharedAccessActive && !isAdminAccessActive) return;
     if (!navigationRef.isReady()) return;
 
     const currentRouteName = navigationRef.getCurrentRoute()?.name;
@@ -611,7 +616,7 @@ export function Navigation(props?: any) {
       index: 0,
       routes: [{ name: ScreenNames.HOME_TABS as any }],
     } as any);
-  }, [isSubscribed, isSharedAccessActive, navigationRef]);
+  }, [isSubscribed, isSharedAccessActive, isAdminAccessActive, navigationRef]);
 
   return (
     <NavigationContainer
