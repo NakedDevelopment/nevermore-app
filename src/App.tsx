@@ -96,9 +96,9 @@ function AppContent() {
 
   React.useEffect(() => {
     if (!isAuthenticated || !user?.$id) return;
-    identifyOneSignalUser(user.$id, user.email).catch(() => {});
+    identifyOneSignalUser(user.$id).catch(() => {});
     syncDailyPushScheduleFromState().catch(() => {});
-  }, [isAuthenticated, user?.$id, user?.email]);
+  }, [isAuthenticated, user?.$id]);
 
   React.useEffect(() => {
     if (cinzelFontsLoaded && robotoFontsLoaded && assetsLoaded && authChecked) {

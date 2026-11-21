@@ -9,11 +9,8 @@ import { ScreenNames } from '../../constants/ScreenNames';
 import { useOnboardingStore } from '../../store/onboardingStore';
 import { usePushNotificationStore } from '../../store/pushNotificationStore';
 import { requestPushPermission, setDailyPushTags } from '../../services/onesignal.service';
-import {
-  scheduleRemainingDailyPushes,
-  syncDailyPushScheduleFromState,
-} from '../../services/dailyPushScheduler.service';
-import { getLocalDeliveryTimeFromDate } from '../../utils/dailyPushSchedule';
+import { syncDailyPushScheduleFromState } from '../../services/dailyPushScheduler.service';
+import { DAILY_PUSH_DELIVERY_TIME } from '../../utils/dailyPushSchedule';
 
 export function NotificationOptIn() {
   const navigation = useNavigation<any>();
@@ -36,17 +33,20 @@ export function NotificationOptIn() {
     setIsLoading(true);
     setError(null);
     try {
-      const now = new Date();
-      const delivery = getLocalDeliveryTimeFromDate(now);
       const granted = await requestPushPermission();
+      const optedInAt = new Date();
 
       usePushNotificationStore.getState().setOptInScreenCompleted(true);
-      usePushNotificationStore.getState().recordOptIn(now.toISOString(), delivery.hour, delivery.minute);
+      usePushNotificationStore.getState().recordOptIn(
+        optedInAt.toISOString(),
+        DAILY_PUSH_DELIVERY_TIME.hour,
+        DAILY_PUSH_DELIVERY_TIME.minute
+      );
       usePushNotificationStore.getState().setNotificationsEnabled(granted);
 
       if (granted) {
         setDailyPushTags(1, true);
-        await scheduleRemainingDailyPushes();
+        await syncDailyPushScheduleFromState();
       } else {
         setDailyPushTags(1, false);
       }
@@ -65,10 +65,6 @@ export function NotificationOptIn() {
     setDailyPushTags(1, false);
     finishToHome();
   };
-
-  React.useEffect(() => {
-    void syncDailyPushScheduleFromState();
-  }, []);
 
   return (
     <View style={styles.container}>

@@ -1,10 +1,11 @@
 import { Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
-import { DAILY_PUSH_MESSAGES } from '../constants/dailyPushMessages';
+import { DAILY_PUSH_COUNT, DAILY_PUSH_MESSAGES } from '../constants/dailyPushMessages';
 import {
-  getLocalDeliveryTimeFromDate,
+  getDailyPushDeliveryTime,
   getNextMessageDayFromClock,
   getRemainingMessageDays,
+  getTriggerDateForMessageDay,
 } from '../utils/dailyPushSchedule';
 import { usePushNotificationStore } from '../store/pushNotificationStore';
 
@@ -18,6 +19,17 @@ Notifications.setNotificationHandler({
   }),
 });
 
+let schedulingChain: Promise<void> = Promise.resolve();
+
+function withSchedulingLock<T>(work: () => Promise<T>): Promise<T> {
+  const next = schedulingChain.then(work, work);
+  schedulingChain = next.then(
+    () => undefined,
+    () => undefined
+  );
+  return next;
+}
+
 export async function ensureNotificationChannels(): Promise<void> {
   if (Platform.OS !== 'android') return;
   await Notifications.setNotificationChannelAsync('daily-nudge', {
@@ -29,7 +41,7 @@ export async function ensureNotificationChannels(): Promise<void> {
   });
 }
 
-export async function cancelScheduledDailyPushes(): Promise<void> {
+async function cancelScheduledDailyPushesUnlocked(): Promise<void> {
   const { scheduledNotificationIds } = usePushNotificationStore.getState();
   await Promise.all(
     scheduledNotificationIds.map((id) => Notifications.cancelScheduledNotificationAsync(id).catch(() => {}))
@@ -37,22 +49,23 @@ export async function cancelScheduledDailyPushes(): Promise<void> {
   usePushNotificationStore.getState().setScheduledNotificationIds([]);
 }
 
-export async function scheduleRemainingDailyPushes(): Promise<void> {
+export async function cancelScheduledDailyPushes(): Promise<void> {
+  return withSchedulingLock(cancelScheduledDailyPushesUnlocked);
+}
+
+async function scheduleRemainingDailyPushesLocked(): Promise<void> {
   const state = usePushNotificationStore.getState();
   if (!state.notificationsEnabled || !state.optedInAt) return;
 
   const optedInAt = new Date(state.optedInAt);
   if (!Number.isFinite(optedInAt.getTime())) return;
 
-  const delivery =
-    state.deliveryHour != null && state.deliveryMinute != null
-      ? { hour: state.deliveryHour, minute: state.deliveryMinute }
-      : getLocalDeliveryTimeFromDate(optedInAt);
+  const delivery = getDailyPushDeliveryTime();
 
   const days = getRemainingMessageDays(state.nextMessageDay);
   if (days.length === 0) return;
 
-  await cancelScheduledDailyPushes();
+  await cancelScheduledDailyPushesUnlocked();
   await ensureNotificationChannels();
 
   const ids: string[] = [];
@@ -61,6 +74,9 @@ export async function scheduleRemainingDailyPushes(): Promise<void> {
     if (!message) continue;
 
     const triggerDate = getTriggerDateForMessageDay(optedInAt, day, delivery);
+    if (triggerDate.getTime() <= Date.now()) {
+      continue;
+    }
     const id = await Notifications.scheduleNotificationAsync({
       content: {
         title: message.title,
@@ -78,31 +94,40 @@ export async function scheduleRemainingDailyPushes(): Promise<void> {
     ids.push(id);
   }
 
+  const latest = usePushNotificationStore.getState();
+  if (!latest.notificationsEnabled || !latest.optedInAt) {
+    await cancelScheduledDailyPushesUnlocked();
+    return;
+  }
+
   usePushNotificationStore.getState().setScheduledNotificationIds(ids);
 }
 
+export async function scheduleRemainingDailyPushes(): Promise<void> {
+  return withSchedulingLock(scheduleRemainingDailyPushesLocked);
+}
+
 export async function completeDailyPushSequenceAfterDay40(): Promise<void> {
-  await cancelScheduledDailyPushes();
+  await cancelScheduledDailyPushesUnlocked();
   usePushNotificationStore.getState().setNextMessageDay(41);
 }
 
 export async function syncDailyPushScheduleFromState(): Promise<void> {
-  const state = usePushNotificationStore.getState();
-  if (!state.notificationsEnabled || !state.optedInAt) return;
+  return withSchedulingLock(async () => {
+    const state = usePushNotificationStore.getState();
+    if (!state.notificationsEnabled || !state.optedInAt) return;
 
-  const optedInAt = new Date(state.optedInAt);
-  const delivery =
-    state.deliveryHour != null && state.deliveryMinute != null
-      ? { hour: state.deliveryHour, minute: state.deliveryMinute }
-      : getLocalDeliveryTimeFromDate(optedInAt);
+    const optedInAt = new Date(state.optedInAt);
+    const delivery = getDailyPushDeliveryTime();
 
-  const nextDay = getNextMessageDayFromClock(optedInAt, delivery);
-  usePushNotificationStore.getState().setNextMessageDay(nextDay);
+    const nextDay = getNextMessageDayFromClock(optedInAt, delivery);
+    usePushNotificationStore.getState().setNextMessageDay(nextDay);
 
-  if (nextDay > DAILY_PUSH_COUNT) {
-    await completeDailyPushSequenceAfterDay40();
-    return;
-  }
+    if (nextDay > DAILY_PUSH_COUNT) {
+      await completeDailyPushSequenceAfterDay40();
+      return;
+    }
 
-  await scheduleRemainingDailyPushes();
+    await scheduleRemainingDailyPushesLocked();
+  });
 }

@@ -5,6 +5,13 @@ export type LocalDeliveryTime = {
   minute: number;
 };
 
+/** Fixed local delivery wall time for all 40 daily messages (6:30 PM device local). */
+export const DAILY_PUSH_DELIVERY_TIME: LocalDeliveryTime = { hour: 18, minute: 30 };
+
+export function getDailyPushDeliveryTime(): LocalDeliveryTime {
+  return DAILY_PUSH_DELIVERY_TIME;
+}
+
 export function getLocalDeliveryTimeFromDate(date: Date): LocalDeliveryTime {
   return { hour: date.getHours(), minute: date.getMinutes() };
 }

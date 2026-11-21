@@ -144,8 +144,14 @@ export const useAuthStore = create<AuthState>((set) => ({
       set({ user: null, isAuthenticated: false, isLoading: false });
     } catch (error: any) {
       await import('../contexts/AudioPlayerProvider').then(({ stopAllAudioPlayback }) => stopAllAudioPlayback());
+      await cancelScheduledDailyPushes().catch(() => {});
+      await logoutOneSignal().catch(() => {});
+      useOnboardingStore.getState().resetOnboarding();
+      useTrialStore.getState().resetTrial();
       useSharedAccessStore.getState().clearSharedAccess();
       useAdminAccessStore.getState().clearAdminAccess();
+      useSubscriptionStore.getState().resetSubscriptionState();
+      usePushNotificationStore.getState().resetPushNotificationState();
       set({
         error: error.message || 'Failed to sign out',
         isLoading: false
@@ -160,6 +166,8 @@ export const useAuthStore = create<AuthState>((set) => ({
       await import('../contexts/AudioPlayerProvider').then(({ stopAllAudioPlayback }) => stopAllAudioPlayback());
       await authService.deleteAccount();
       await import('../services/iap.service').then(({ iapService }) => iapService.logOut());
+      await cancelScheduledDailyPushes();
+      await logoutOneSignal();
 
       useBookmarkStore.getState().clearBookmarks();
       useFortyDayStore.getState().clearProgress();
@@ -168,6 +176,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       useSharedAccessStore.getState().clearSharedAccess();
       useAdminAccessStore.getState().clearAdminAccess();
       useSubscriptionStore.getState().resetSubscriptionState();
+      usePushNotificationStore.getState().resetPushNotificationState();
 
       set({ user: null, isAuthenticated: false, isLoading: false });
     } catch (error: any) {
