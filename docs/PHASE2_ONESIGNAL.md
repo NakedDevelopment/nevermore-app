@@ -4,7 +4,7 @@
 
 1. User completes trial purchase on `TrialWelcome`.
 2. `NotificationOptIn` shows the raven loop and explains the 40-message sequence.
-3. **Turn on notifications** requests push permission (OneSignal when `ONESIGNAL_APP_ID` is set, otherwise `expo-notifications` with a console warning).
+3. **Turn on notifications** requests OS permission via `expo-notifications` (the 40 local messages depend on this). When `ONESIGNAL_APP_ID` is set, OneSignal init/permission runs best-effort for future remote push; failures (e.g. APNs/FCM not wired in OneSignal yet) are logged and never block local scheduling.
 4. On grant, the app schedules 40 date-triggered local notifications via `expo-notifications` at **6:30 PM device-local time** (day 1 = today at 18:30 if opt-in is before 18:30, else tomorrow at 18:30).
 5. Messages fire in strict order 1→40, then scheduling stops.
 

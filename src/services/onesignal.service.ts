@@ -8,6 +8,9 @@ let initialized = false;
 const MISSING_ONESIGNAL_APP_ID_MESSAGE =
   '[OneSignal] ONESIGNAL_APP_ID is not set. OneSignal will not initialize; local daily notifications still work via expo-notifications.';
 
+const REMOTE_PUSH_DEFERRED_MESSAGE =
+  '[OneSignal] Remote push registration is unavailable (APNs/FCM may not be active). Local 18:30 daily notifications are unaffected.';
+
 function getOneSignalAppId(): string {
   return ONESIGNAL_APP_ID || '';
 }
@@ -26,22 +29,35 @@ export async function initOneSignal(): Promise<void> {
   }
   if (initialized) return;
 
-  if (__DEV__) {
-    OneSignal.Debug.setLogLevel(LogLevel.Verbose);
+  try {
+    if (__DEV__) {
+      OneSignal.Debug.setLogLevel(LogLevel.Verbose);
+    }
+    OneSignal.initialize(appId);
+    initialized = true;
+  } catch (error) {
+    console.warn(REMOTE_PUSH_DEFERRED_MESSAGE, error);
   }
-  OneSignal.initialize(appId);
-  initialized = true;
 }
 
 export async function identifyOneSignalUser(appUserId: string): Promise<void> {
   if (!isOneSignalConfigured()) return;
-  await initOneSignal();
-  OneSignal.login(appUserId);
+  try {
+    await initOneSignal();
+    if (!initialized) return;
+    OneSignal.login(appUserId);
+  } catch (error) {
+    console.warn(REMOTE_PUSH_DEFERRED_MESSAGE, error);
+  }
 }
 
 export async function logoutOneSignal(): Promise<void> {
   if (!initialized) return;
-  OneSignal.logout();
+  try {
+    OneSignal.logout();
+  } catch (error) {
+    console.warn(REMOTE_PUSH_DEFERRED_MESSAGE, error);
+  }
 }
 
 async function requestLocalNotificationPermission(): Promise<boolean> {
@@ -51,22 +67,42 @@ async function requestLocalNotificationPermission(): Promise<boolean> {
   return status === 'granted';
 }
 
+/**
+ * OS permission for the 40-day local sequence always goes through expo-notifications.
+ * OneSignal remote registration is best-effort and must not block local scheduling.
+ */
 export async function requestPushPermission(): Promise<boolean> {
   if (Platform.OS === 'web') return false;
-  if (!isOneSignalConfigured()) {
-    if (!initialized) {
-      console.warn(MISSING_ONESIGNAL_APP_ID_MESSAGE);
+
+  if (isOneSignalConfigured()) {
+    try {
+      await initOneSignal();
+      if (initialized) {
+        await OneSignal.Notifications.requestPermission(true);
+      }
+    } catch (error) {
+      console.warn(REMOTE_PUSH_DEFERRED_MESSAGE, error);
     }
-    return requestLocalNotificationPermission();
+  } else {
+    console.warn(MISSING_ONESIGNAL_APP_ID_MESSAGE);
   }
-  await initOneSignal();
-  return OneSignal.Notifications.requestPermission(true);
+
+  try {
+    return await requestLocalNotificationPermission();
+  } catch (error) {
+    console.warn('[Nevermore] Local notification permission request failed.', error);
+    return false;
+  }
 }
 
 export function setDailyPushTags(nextMessageDay: number, active: boolean): void {
-  if (!isOneSignalConfigured()) return;
-  OneSignal.User.addTags({
-    daily_push_active: active ? '1' : '0',
-    daily_push_next_day: String(nextMessageDay),
-  });
+  if (!isOneSignalConfigured() || !initialized) return;
+  try {
+    OneSignal.User.addTags({
+      daily_push_active: active ? '1' : '0',
+      daily_push_next_day: String(nextMessageDay),
+    });
+  } catch (error) {
+    console.warn(REMOTE_PUSH_DEFERRED_MESSAGE, error);
+  }
 }
